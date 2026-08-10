@@ -1,9 +1,33 @@
 # CLI contract
 
-**Status:** skeleton. Commands are added here by the PR that implements them; the
-first real entries land with PR-03 (`kns zone`). From PR-20 this document is
-generated from the command registry and diffed in CI, so it cannot drift from the
-code.
+**Status:** `kns zone` is implemented and documented below (PR-03). Remaining commands
+are added by the PR that implements them. From PR-20 this document is generated from
+the command registry and diffed in CI, so it cannot drift from the code.
+
+## Implemented: `kns zone`
+
+```bash
+kns zone list [--scope <namespace>] [--json]
+kns zone show <name> [--json]
+kns zone add --name <n> --namespace <ns> --tier USER|TEAM|COMPANY \
+             --distance <n> --root <path> \
+             [--ttl-seconds <n>] [--half-life-days <n>] [--owner <who>] \
+             [--source-repo <url>] [--never-early-exit] [--json]
+kns zone remove <name> [--json]
+```
+
+`--root <path>` is the ergonomic form: it becomes `zbrain-mcp --root <absolute path>`.
+`--command` and `--arg=<string>` override that for a non-ZBrain zone. A value that
+itself begins with dashes must use the `=` form, because a bare `--arg --root /x`
+parses as a switch followed by another flag.
+
+The registry lives at `$KNS_HOME/zones.json`, defaulting to `~/.kns/zones.json`. It is
+only ever read from disk, never fetched, because `transport.command` names a process
+to spawn.
+
+Unknown flags are rejected rather than ignored: a silently dropped `--scope` is a wrong
+answer that looks like a right one. A malformed registry loads no zones at all rather
+than a subset.
 
 ## Principles
 
