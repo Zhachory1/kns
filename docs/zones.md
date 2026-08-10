@@ -42,6 +42,22 @@ registry fails closed: no zone loads, and the error names the offending entry. A
 half-loaded registry would silently change which zone is authoritative, which is worse
 than not answering.
 
+## What a zone engine must provide
+
+KNS spawns `transport.command` and speaks MCP over stdio to it. An engine qualifies if
+it answers `initialize` and then `tools/call` for a search tool, returning results in a
+content block. Both message framings are accepted — `Content-Length` headers and
+newline-delimited JSON — because both exist in the wild.
+
+Field naming is treated leniently: a hit may spell its identifier `documentId`, `id`,
+or `path`, and its excerpt `snippet`, `excerpt`, `text`, or `body`. Anything missing
+becomes null rather than an error. A zone is a trust boundary, so one engine's odd
+payload must not fail a query the other zones can answer.
+
+Each zone gets one child process, spawned on first use and reused. A call that exceeds
+its deadline reclaims the process — SIGTERM escalating to SIGKILL — so the next query
+starts from a known state instead of queueing behind a hung call.
+
 ## Delegation
 
 Namespaces form a tree, exactly like DNS zones:
