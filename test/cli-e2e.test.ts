@@ -18,7 +18,7 @@ const binary = path.join(root, 'bin', 'kns.js');
 
 /** Invoke the binary with an isolated KNS home. */
 function kns(argv: string[], home: string): { code: number; stdout: string; stderr: string } {
-  const env = { ...process.env, KNS_HOME: home };
+  const env: NodeJS.ProcessEnv = { ...process.env, KNS_HOME: home };
   delete env['NODE_TEST_CONTEXT'];
 
   const result = spawnSync(process.execPath, [binary, ...argv], { cwd: root, encoding: 'utf8', env });
