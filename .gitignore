@@ -1,0 +1,21 @@
+node_modules/
+dist/
+coverage/
+.nyc_output/
+.cache/
+
+# Local KNS state — indexes, TTL cache, demand counters, zone registry.
+# Sensitive local data: may contain private document snippets and paths.
+.kns/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+
+# ZBrain per-zone indexes, if a zone is checked out inside this tree.
+.zbrain/
+
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
