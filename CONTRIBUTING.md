@@ -2,17 +2,20 @@
 
 ## Setup
 
-Requires Node.js >= 22 and `sqlite3` with FTS5 (same prerequisites as ZBrain).
+Requires Node.js >= 22.18 (for unflagged TypeScript execution) and, once zones exist,
+`sqlite3` with FTS5 — the same prerequisites as ZBrain. Tested on 22.18, 24, and 25.
 
 ```bash
 npm install
-npm test                  # node --test with c8 coverage
-npm run lint
-npm run typecheck
-npm run docs:check
+npm run typecheck         # tsc --noEmit
+npm test                  # node --test with built-in coverage, 80% floor
+npm run docs:check        # documentation coverage gate
 ```
 
-`npm run check` runs all four in the order CI does.
+`npm run check` runs all three in the order CI does.
+
+There is no build step for development: Node runs the TypeScript sources directly, and
+the only development dependencies are `typescript` and `@types/node`.
 
 Nothing in this repository fetches or executes remote code during install. There is
 no post-install hook and no bootstrap script; if you are ever asked to pipe a script
@@ -22,16 +25,18 @@ into a shell to set this project up, that is a bug, not a step.
 
 ### 1. Test coverage ≥ 80%
 
-Thresholds live in `.c8rc.json`: lines 80, branches 80, functions 80, statements 80,
-with `check-coverage: true`. CI fails below any of them.
+Thresholds live in the `test` script in `package.json`: lines 80, branches 80,
+functions 80. CI fails below any of them, and `test/coverage-gate.test.ts` asserts that
+the gate really fails an under-tested module — a threshold that is configured but not
+enforced is worse than none.
 
 - The threshold **ratchets up only**. Lowering it in a PR is a review blocker.
 - Tests ship in the same PR as the code they cover. "Tests next PR" is not a thing
   here.
 - Target shape: ~70% unit, ~20% integration, ~10% end-to-end.
-- Prefer injectable seams over `c8` ignore comments for hard-to-reach code
-  (subprocess spawning, filesystem errors). Any `c8 ignore` needs a comment
-  explaining why, visible to the reviewer.
+- Prefer injectable seams over coverage-ignore comments for hard-to-reach code
+  (subprocess spawning, filesystem errors). Any ignore needs a comment explaining why,
+  visible to the reviewer.
 - Pure logic — the ranker, validators, the sanitizer — is expected at or near 100%.
   There is no excuse for uncovered branches in code with no I/O.
 - The ranker additionally carries property tests: monotonic in relevance, monotonic
@@ -41,16 +46,16 @@ with `check-coverage: true`. CI fails below any of them.
 
 `npm run docs:check` fails if any of the following is true:
 
-1. An exported TypeScript symbol has no TSDoc comment.
-2. A CLI command or flag exists in code but is missing from `docs/contract-cli.md`.
-3. An MCP tool or input field exists in code but is missing from
-   `docs/contract-mcp.md`.
-4. A config key exists in the schema but is missing from `docs/configuration.md`.
-5. A Markdown link inside `docs/` points at a missing file or anchor.
+1. A required document is missing or is still a stub.
+2. A Markdown link points at a missing file or a missing anchor.
+3. An exported TypeScript symbol has no TSDoc comment.
+4. A generated block does not match what its generator produces — this is how the CLI,
+   MCP, config, and schema contracts are kept from drifting.
 
-Checks 2–4 work by generating the contract from code and diffing it against the
-committed document. Code is the source of truth; the committed doc is the artifact.
-If you change the surface, regenerate and commit.
+Rules 1–3 are enforced from the first commit. Rule 4 is implemented and tested from
+the first commit but stays inert until a contract document adopts a generated block:
+code is the source of truth, the committed document is the artifact, and CI diffs
+them. If you change the surface, regenerate and commit.
 
 Full rules: [`docs/documentation-policy.md`](docs/documentation-policy.md).
 
