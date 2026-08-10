@@ -7,6 +7,16 @@
   "engines": {
     "node": ">=22.18.0"
   },
+  "bin": {
+    "kns": "./bin/kns.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "DESIGN.md",
+    "README.md"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 --test-coverage-exclude=**/*.test.ts --test-coverage-exclude=test/** --test-coverage-exclude=fixtures/** --test-coverage-exclude=scripts/**",
