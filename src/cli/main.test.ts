@@ -462,3 +462,24 @@ test('promote draft refuses a document id that escapes the corpus', async () => 
   assert.equal(result.code, 1);
   assert.match(result.err, /escapes the zone root/);
 });
+
+test('publish and revoke refuse to run without --confirm', async () => {
+  const { home, corpus } = await homeWithZones();
+  const fs = await import('node:fs/promises');
+  await fs.writeFile(path.join(corpus, 'note.md'), 'body '.repeat(60), 'utf8');
+
+  const publishAttempt = await cli(['promote', 'publish', 'note.md', '--to', 'team'], home);
+  assert.equal(publishAttempt.code, 1);
+  assert.match(publishAttempt.err, /--confirm is required to publish note\.md/);
+
+  const revokeAttempt = await cli(['promote', 'revoke', 'note.md', '--to', 'team'], home);
+  assert.equal(revokeAttempt.code, 1);
+  assert.match(revokeAttempt.err, /--confirm is required to revoke note\.md/);
+});
+
+test('publish requires a document and a target zone', async () => {
+  const { home } = await homeWithZones();
+
+  assert.match((await cli(['promote', 'publish'], home)).err, /document id is required/);
+  assert.match((await cli(['promote', 'publish', 'note.md'], home)).err, /--to <zone> is required/);
+});

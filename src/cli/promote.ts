@@ -12,6 +12,13 @@ import { findZone, loadRegistry } from '../core/registry.ts';
 import type { Registry } from '../core/registry.ts';
 import type { Zone } from '../core/types.ts';
 import { buildDraft, readSource, writeDraft } from '../promote/draft.ts';
+import {
+  clearOriginPointer,
+  publish,
+  qualifiedPath,
+  realExec,
+  writeOriginPointer,
+} from '../promote/publish.ts';
 import { formatFindings } from '../promote/sanitize.ts';
 import { readCorpus, suggest } from '../promote/suggest.ts';
 import type { Suggestion } from '../promote/suggest.ts';
@@ -20,7 +27,7 @@ import type { ParsedArgs } from './args.ts';
 import type { CliContext } from './zone.ts';
 
 /** Flags accepted by the promote commands. */
-const PROMOTE_FLAGS = ['json', 'to', 'limit', 'dry-run', 'as', 'review-days'];
+const PROMOTE_FLAGS = ['json', 'to', 'limit', 'dry-run', 'as', 'review-days', 'confirm'];
 
 /**
  * Locate the corpus directory behind the private zone.
@@ -193,9 +200,74 @@ export async function runPromote(args: ParsedArgs, context: CliContext): Promise
     return 0;
   }
 
+  if (subcommand === 'publish' || subcommand === 'revoke') {
+    const documentId = args.positional[2];
+    if (documentId === undefined) {
+      throw new KnsError(
+        'invalid_request',
+        'document id is required',
+        `kns promote ${subcommand} <id> --to <zone> --confirm`,
+      );
+    }
+
+    const target = flagString(args, 'to');
+    if (target === null) {
+      throw new KnsError('invalid_request', '--to <zone> is required', 'run kns zone list');
+    }
+
+    // There is no silent publish path. Crossing the privacy boundary is always an
+    // explicit act, even for a caller that has already typed the document id.
+    if (!flagBoolean(args, 'confirm')) {
+      throw new KnsError(
+        'invalid_request',
+        `--confirm is required to ${subcommand} ${documentId}`,
+        'review the draft first, then re-run with --confirm',
+      );
+    }
+
+    const registry = await loadRegistry(context.home);
+    const { zone, root } = targetZoneRoot(registry, target);
+    const corpusRoot = userCorpusRoot(registry);
+    const removing = subcommand === 'revoke';
+
+    const result = await publish({
+      zoneRoot: root,
+      documentId,
+      zoneName: zone.name,
+      promotedBy: flagString(args, 'as') ?? process.env['USER'] ?? 'unknown',
+      now: new Date(),
+      exec: realExec,
+      ...(removing ? { remove: true } : {}),
+    });
+
+    // The origin pointer is written only after the pull request exists. A pointer to a
+    // promotion that never happened tells the author their knowledge is shared when it
+    // is not.
+    let pointer: string | null = null;
+    if (removing) {
+      await clearOriginPointer(corpusRoot, documentId).catch(() => false);
+    } else {
+      pointer = qualifiedPath(zone.namespace, documentId);
+      await writeOriginPointer(corpusRoot, documentId, pointer);
+    }
+
+    if (flagBoolean(args, 'json')) {
+      context.write(JSON.stringify(ok({ ...result, documentId, promotedTo: pointer }), null, 2));
+    } else {
+      context.write(
+        [
+          `${removing ? 'demotion' : 'promotion'} opened on branch ${result.branch}`,
+          result.url === null ? 'no pull-request URL was reported' : result.url,
+          removing ? 'origin pointer cleared' : `origin now records promoted_to: ${pointer ?? ''}`,
+        ].join('\n'),
+      );
+    }
+    return 0;
+  }
+
   throw new KnsError(
     'invalid_request',
     `unknown subcommand "promote ${subcommand}"`,
-    'expected one of: suggest, draft',
+    'expected one of: suggest, draft, publish, revoke',
   );
 }
