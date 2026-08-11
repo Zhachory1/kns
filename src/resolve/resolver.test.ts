@@ -183,26 +183,112 @@ test('resolve returns annotated hits from the nearest zone', async () => {
   assert.ok(result.resolveMs >= 0);
 });
 
-test('resolve queries every zone in the nearest band', async () => {
+test('resolve walks outward through every band, nearest first', async () => {
   const zones = [
     zone({ name: 'user-a' }),
     zone({ name: 'user-b' }),
-    zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1 }),
+    zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1, owner: 'team' }),
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2, owner: 'eng' }),
   ];
   const context = deps(zones, {
     'user-a': { hits: [raw('a.md')] },
     'user-b': { hits: [raw('b.md')] },
     team: { hits: [raw('t.md')] },
+    company: { hits: [raw('c.md')] },
   });
 
   const result = await resolve(request(), context.deps);
 
-  assert.deepEqual(result.zonesQueried, ['user-a', 'user-b']);
+  assert.deepEqual(result.zonesQueried, ['user-a', 'user-b', 'team', 'company']);
   assert.deepEqual(
-    result.hits.map((hit) => hit.documentId),
-    ['a.md', 'b.md'],
+    result.hits.map((hit) => hit.documentId).sort(),
+    ['a.md', 'b.md', 'c.md', 't.md'],
   );
-  assert.equal(result.earlyExitAt, 0, 'the walk stopped at the nearest band');
+});
+
+test('resolve ranks across bands rather than concatenating them', async () => {
+  const zones = [
+    zone({ name: 'user' }),
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2, owner: 'eng', halfLifeDays: 365 }),
+  ];
+  const context = deps(zones, {
+    // The local zone answers, but only weakly; the company zone's top hit is fresh
+    // and owned. Nearness is a prior, so the better hit must still win.
+    user: { hits: [raw('weak-1.md'), raw('weak-2.md'), raw('weak-3.md'), raw('local.md')] },
+    company: { hits: [raw('company.md', { modified: '2026-08-09T12:00:00.000Z' })] },
+  });
+
+  const result = await resolve(request(), context.deps);
+
+  assert.equal(result.hits[0]?.documentId, 'weak-1.md', 'the rank-1 local hit still leads');
+  const companyRank = result.hits.findIndex((hit) => hit.documentId === 'company.md');
+  const localRank = result.hits.findIndex((hit) => hit.documentId === 'local.md');
+  assert.ok(companyRank < localRank, 'a fresh rank-1 company hit beats a rank-4 local one');
+});
+
+test('resolve deduplicates a document returned by two zones', async () => {
+  const zones = [
+    zone({ name: 'user' }),
+    zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1, owner: 'team' }),
+  ];
+  const context = deps(zones, {
+    user: { hits: [raw('shared.md')] },
+    team: { hits: [raw('shared.md')] },
+  });
+
+  const result = await resolve(request(), context.deps);
+
+  assert.equal(result.hits.length, 1);
+  assert.deepEqual(result.hits[0]?.alsoIn, ['team']);
+});
+
+test('resolve stops walking when the overall deadline is spent', async () => {
+  const zones = [
+    zone({ name: 'user' }),
+    zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1 }),
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2 }),
+  ];
+  const context = deps(zones, {
+    user: { hits: [raw('a.md')], delayMs: 60 },
+    team: { hits: [raw('t.md')], delayMs: 60 },
+    company: { hits: [raw('c.md')] },
+  });
+  context.deps.config.resolution.resolveDeadlineMs = 100;
+
+  const result = await resolve(request(), context.deps);
+
+  assert.ok(!result.zonesQueried.includes('company'), 'the last band was never reached');
+  assert.equal(result.partial, true);
+  const timeout = result.warnings.find((warning) => warning.zone === null);
+  assert.match(timeout?.message ?? '', /overall deadline of 100ms reached; company not queried/);
+});
+
+test('resolve caps a zone deadline by the remaining overall budget', async () => {
+  const zones = [zone({ name: 'user' }), zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1 })];
+  const seen: number[] = [];
+  const context = deps(zones, { user: { hits: [] }, team: { hits: [] } });
+
+  const inner = context.deps.createClient;
+  context.deps.createClient = (target) => {
+    const client = inner(target);
+    return {
+      ...client,
+      search: async (query: string, limit: number, deadlineMs: number) => {
+        seen.push(deadlineMs);
+        return client.search(query, limit, deadlineMs);
+      },
+    };
+  };
+  context.deps.config.resolution.resolveDeadlineMs = 500;
+  context.deps.config.resolution.zoneDeadlineMs = 1500;
+
+  await resolve(request(), context.deps);
+
+  assert.equal(seen.length, 2);
+  assert.ok(
+    seen.every((deadline) => deadline <= 500),
+    `expected every zone deadline under the 500ms budget, saw ${JSON.stringify(seen)}`,
+  );
 });
 
 test('resolve marks a partial result when a zone fails but others answer', async () => {

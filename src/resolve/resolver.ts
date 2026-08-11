@@ -5,9 +5,9 @@
  * when to stop — and nothing else. Talking to a zone is the client's job; ordering
  * results is the ranker's.
  *
- * At this stage the walk reaches the nearest distance band only. Fanning outward
- * arrives with fusion, because concatenating results from several bands without a way
- * to compare them across engines would produce an order nobody could defend.
+ * The walk visits distance bands in order and queries the zones within a band in
+ * parallel. Two deadlines bound it: one per zone, so a slow zone is dropped rather
+ * than waited on, and one overall, so a wide registry cannot make a query unbounded.
  *
  * @module
  */
@@ -19,6 +19,7 @@ import type { Hit, ResolveRequest, ResolveResult, Warning, Zone } from '../core/
 import { KnsError } from '../core/errors.ts';
 import type { ZoneClient } from '../zone/client.ts';
 import { annotate } from './annotate.ts';
+import { rankHits } from './rank.ts';
 
 /** Creates a client for a zone. Injected so tests never spawn a process. */
 export type ClientFactory = (zone: Zone) => ZoneClient;
@@ -57,12 +58,13 @@ export async function queryZone(
   zone: Zone,
   request: ResolveRequest,
   deps: ResolveDeps,
+  deadlineMs: number = deps.config.resolution.zoneDeadlineMs,
 ): Promise<ZoneOutcome> {
   const client = deps.createClient(zone);
   const now = deps.now ?? new Date();
 
   try {
-    const raw = await client.search(request.query, request.k, deps.config.resolution.zoneDeadlineMs);
+    const raw = await client.search(request.query, request.k, deadlineMs);
     return { zone, hits: annotate(raw, zone, now), warning: null };
   } catch (error) {
     const code = error instanceof KnsError ? error.code : 'internal';
@@ -122,15 +124,32 @@ export async function resolve(request: ResolveRequest, deps: ResolveDeps): Promi
   const started = Date.now();
   const zones = selectZones(deps.registry, request.scope);
   const bands = groupByDistance(zones);
+  const byName = new Map(zones.map((zone) => [zone.name, zone]));
 
   const hits: Hit[] = [];
   const warnings: Warning[] = [];
   const zonesQueried: string[] = [];
 
-  const band = bands[0];
-  if (band !== undefined) {
+  for (const band of bands) {
+    const remaining = deps.config.resolution.resolveDeadlineMs - (Date.now() - started);
+    if (remaining <= 0) {
+      // The overall budget is spent. Report the zones that were never reached rather
+      // than returning a result that silently looks complete.
+      warnings.push({
+        code: 'zone_timeout',
+        zone: null,
+        message: `overall deadline of ${deps.config.resolution.resolveDeadlineMs}ms reached; ${bands
+          .flat()
+          .filter((zone) => !zonesQueried.includes(zone.name))
+          .map((zone) => zone.name)
+          .join(', ')} not queried`,
+      });
+      break;
+    }
+
+    const deadlineMs = Math.min(deps.config.resolution.zoneDeadlineMs, remaining);
     const outcomes = await withConcurrency(
-      band.map((zone) => () => queryZone(zone, request, deps)),
+      band.map((zone) => () => queryZone(zone, request, deps, deadlineMs)),
       deps.config.resolution.maxConcurrentZones,
     );
 
@@ -146,17 +165,15 @@ export async function resolve(request: ResolveRequest, deps: ResolveDeps): Promi
       code: 'invalid_request',
       zone: null,
       message:
-        request.scope === null
-          ? 'no zones configured'
-          : `no zones match scope "${request.scope}"`,
+        request.scope === null ? 'no zones configured' : `no zones match scope "${request.scope}"`,
     });
   }
 
   return {
-    hits: hits.slice(0, request.k),
+    hits: rankHits(hits, byName, deps.config.ranking).slice(0, request.k),
     zonesQueried,
-    earlyExitAt: bands.length > 1 && band !== undefined ? band[0]?.distance ?? null : null,
-    partial: warnings.some((warning) => warning.zone !== null),
+    earlyExitAt: null,
+    partial: warnings.some((warning) => warning.code !== 'invalid_request'),
     resolveMs: Date.now() - started,
     warnings,
   };
