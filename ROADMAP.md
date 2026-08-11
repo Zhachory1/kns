@@ -45,7 +45,7 @@ landed zero-dep: Node run TypeScript direct, `node --test` built-in coverage, on
 
 ## M1 — Resolve one zone (no behavior change)
 
-**PRs:** 03–05 · **Ship:** `kns resolve` over the local ZBrain, annotated.
+**Status: DONE** · **PRs:** 03–05 · **Ship:** `kns resolve` over the local ZBrain, annotated.
 
 Goal: build the seam without changing what user get. Matches rollout phase 1–2.
 
@@ -65,7 +65,7 @@ Latency delta vs raw ZBrain < 50ms p95. Adapter kill leftover child on timeout
 
 ## M2 — Many zones, ranked, cached
 
-**PRs:** 06–11 · **Ship:** real hierarchical resolution + eval numbers.
+**Status: DONE** · **PRs:** 06–11 · **Ship:** real hierarchical resolution + eval numbers.
 
 Goal: the DNS behavior. This is where design either work or not.
 
@@ -93,7 +93,7 @@ weights stay config, not constants.
 
 ## M3 — Promotion (the write path)
 
-**PRs:** 12–16 · **Ship:** knowledge actually cross the boundary, safely.
+**Status: DONE** · **PRs:** 12–16 · **Ship:** knowledge actually cross the boundary, safely.
 
 Goal: turn "local note" into "team knowledge" without leaking anything.
 
@@ -118,7 +118,7 @@ each near-miss.
 
 ## M4 — Company root, signals, scale, 0.1.0
 
-**PRs:** 17–20 · **Ship:** taggable release.
+**Status: DONE** · **PRs:** 17–20 · **Ship:** taggable release.
 
 - Demand signal, local-only default, k-anonymity + bucketing when exported.
 - Demotion / review TTL sweep → `kns review` open demotion or renewal PRs.
