@@ -80,9 +80,18 @@ observable rather than a hidden optimization.
 
 Two zones can disagree — typically a stale company document against a fresher team
 one. Freshness and authority already push the fresher, owned document up. Conflict
-detection makes that visible: hits sharing promotion lineage but differing in content
-are marked `conflict: true` with a pointer to the other zone, and `kns resolve
---explain` prints which factor decided the order.
+detection makes that visible.
+
+Deduplication only catches the easy case, where two zones return the *same* document
+id. The case that actually misleads a reader is a stale company runbook sitting beside
+a fresher team one under a different filename: both look authoritative, and nothing in
+either says the other exists. So conflicts are detected by content similarity — a
+Jaccard overlap of snippet terms above `CONFLICT_SIMILARITY` — between hits from
+different zones whose text differs.
+
+Identical snippets are duplication, not disagreement, and two similar notes inside one
+zone are that zone's business. Only cross-zone divergence is flagged, as
+`conflict: true` with `conflictWith` naming the other zone-qualified documents.
 
 Surfacing the disagreement matters more than silently winning it. The reader is the
 one who can tell which document is actually right, and who to ask.

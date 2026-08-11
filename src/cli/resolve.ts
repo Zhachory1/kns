@@ -25,7 +25,9 @@ function describeHit(hit: Hit, index: number): string {
   const { provenance } = hit;
   const age = provenance.ageDays === null ? 'age?' : `${provenance.ageDays}d`;
   const owner = provenance.owner ?? 'unowned';
-  const flag = hit.conflict ? ' [conflict]' : '';
+  const flag = hit.conflict
+    ? ` [conflict${hit.conflictWith.length > 0 ? ` with ${hit.conflictWith.join(', ')}` : ''}]`
+    : '';
   const snippet = hit.snippet.replace(/\s+/g, ' ').slice(0, 120);
 
   return [

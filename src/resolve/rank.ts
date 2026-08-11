@@ -175,7 +175,70 @@ export function dedupe(hits: readonly Hit[]): Hit[] {
     ...hit,
     alsoIn: others.get(hit.documentId) ?? [],
     conflict: conflicting.has(hit.documentId),
+    conflictWith: hit.conflictWith,
   }));
+}
+
+/**
+ * Jaccard similarity between two snippets, over their word sets.
+ *
+ * @param left - First snippet.
+ * @param right - Second snippet.
+ * @returns A value in [0, 1]. Two empty snippets score 0.
+ */
+export function similarity(left: string, right: string): number {
+  const tokensOf = (text: string): Set<string> =>
+    new Set(text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []);
+
+  const a = tokensOf(left);
+  const b = tokensOf(right);
+  if (a.size === 0 || b.size === 0) return 0;
+
+  let shared = 0;
+  for (const token of a) if (b.has(token)) shared += 1;
+  return shared / (a.size + b.size - shared);
+}
+
+/** Similarity above which two documents are treated as covering the same topic. */
+export const CONFLICT_SIMILARITY = 0.6;
+
+/**
+ * Flag hits from different zones that cover the same topic but disagree.
+ *
+ * Deduplication only catches the easy case, where two zones return the same document
+ * id. The case that actually misleads a reader is a stale company runbook sitting
+ * beside a fresher team one under a different filename: both look authoritative, and
+ * nothing in either says the other exists.
+ *
+ * Ranking already prefers the fresher, owned copy. This makes the disagreement
+ * visible, because the reader is the one who can tell which is right and who to ask.
+ *
+ * @param hits - Ranked hits.
+ * @param threshold - Similarity above which two documents are the same topic.
+ * @returns The hits, with conflict flags and cross-references filled in.
+ */
+export function markConflicts(hits: readonly Hit[], threshold = CONFLICT_SIMILARITY): Hit[] {
+  const conflicts = hits.map((hit) => new Set<string>(hit.conflictWith));
+
+  for (let i = 0; i < hits.length; i += 1) {
+    for (let j = i + 1; j < hits.length; j += 1) {
+      const left = hits[i];
+      const right = hits[j];
+      if (left === undefined || right === undefined) continue;
+      if (left.provenance.zone === right.provenance.zone) continue;
+      if (left.documentId === right.documentId) continue;
+      if (left.snippet === right.snippet) continue;
+      if (similarity(left.snippet, right.snippet) < threshold) continue;
+
+      conflicts[i]?.add(`${right.provenance.zone}/${right.documentId}`);
+      conflicts[j]?.add(`${left.provenance.zone}/${left.documentId}`);
+    }
+  }
+
+  return hits.map((hit, index) => {
+    const related = [...(conflicts[index] ?? [])].sort();
+    return { ...hit, conflict: hit.conflict || related.length > 0, conflictWith: related };
+  });
 }
 
 /**
@@ -202,5 +265,5 @@ export function rankHits(
     };
   });
 
-  return dedupe(scored).sort(compareHits);
+  return markConflicts(dedupe(scored).sort(compareHits));
 }

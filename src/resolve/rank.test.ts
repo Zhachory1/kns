@@ -4,8 +4,11 @@ import assert from 'node:assert/strict';
 import { defaultConfig } from '../core/config.ts';
 import type { Hit, Tier, Zone } from '../core/types.ts';
 import {
+  CONFLICT_SIMILARITY,
   authority,
   coverage,
+  markConflicts,
+  similarity,
   compareHits,
   dedupe,
   freshness,
@@ -48,6 +51,7 @@ function hit(
     },
     alsoIn: [],
     conflict: false,
+    conflictWith: [],
   };
 }
 
@@ -306,4 +310,100 @@ test('the coverage floor keeps a terse snippet from being zeroed out', () => {
   const score = scoreHit(hit('a.md', { snippet: 'a title with nothing in common' }), zone, RANKING, 'zzz qqq');
 
   assert.ok(score > 0);
+});
+
+test('similarity is symmetric and bounded', () => {
+  assert.equal(similarity('index reload procedure', 'index reload procedure'), 1);
+  assert.equal(similarity('index reload procedure', 'sourdough starter feeding'), 0);
+  assert.equal(similarity('', 'anything here'), 0);
+  assert.equal(
+    similarity('index reload swap', 'reload index swap now'),
+    similarity('reload index swap now', 'index reload swap'),
+  );
+});
+
+test('similarity ignores very short tokens', () => {
+  assert.equal(similarity('a an of the', 'to by in on'), 0, 'stopword-length tokens carry no signal');
+});
+
+test('near-duplicate documents in different zones are flagged as conflicting', () => {
+  const marked = markConflicts([
+    hit('runbooks/index-reload.md', {
+      zone: 'company',
+      snippet: 'index reload procedure swap generation atomic readers',
+    }),
+    hit('runbooks/index-reload-current.md', {
+      zone: 'team',
+      snippet: 'index reload procedure swap generation atomic readers current',
+    }),
+  ]);
+
+  assert.equal(marked[0]?.conflict, true);
+  assert.deepEqual(marked[0]?.conflictWith, ['team/runbooks/index-reload-current.md']);
+  assert.deepEqual(marked[1]?.conflictWith, ['company/runbooks/index-reload.md']);
+});
+
+test('unrelated documents are not flagged', () => {
+  const marked = markConflicts([
+    hit('a.md', { zone: 'company', snippet: 'index reload procedure generation' }),
+    hit('b.md', { zone: 'team', snippet: 'sourdough starter feeding schedule' }),
+  ]);
+
+  assert.ok(marked.every((entry) => !entry.conflict));
+  assert.ok(marked.every((entry) => entry.conflictWith.length === 0));
+});
+
+test('two documents in the same zone are not a cross-zone conflict', () => {
+  const marked = markConflicts([
+    hit('a.md', { zone: 'team', snippet: 'index reload procedure swap generation' }),
+    hit('b.md', { zone: 'team', snippet: 'index reload procedure swap generation now' }),
+  ]);
+
+  assert.ok(marked.every((entry) => !entry.conflict), 'a zone is allowed to hold two similar notes');
+});
+
+test('identical snippets are duplication, not disagreement', () => {
+  const snippet = 'index reload procedure swap generation atomic';
+  const marked = markConflicts([
+    hit('a.md', { zone: 'team', snippet }),
+    hit('b.md', { zone: 'company', snippet }),
+  ]);
+
+  assert.ok(marked.every((entry) => !entry.conflict));
+});
+
+test('the conflict threshold is respected', () => {
+  const pair = [
+    hit('a.md', { zone: 'team', snippet: 'index reload procedure swap generation atomic readers' }),
+    hit('b.md', { zone: 'company', snippet: 'index reload something entirely different here now' }),
+  ];
+
+  assert.ok(markConflicts(pair, 1.01).every((entry) => !entry.conflict));
+  assert.ok(markConflicts(pair, 0.05).every((entry) => entry.conflict));
+  assert.ok(CONFLICT_SIMILARITY > 0 && CONFLICT_SIMILARITY < 1);
+});
+
+test('rankHits surfaces a stale-versus-fresh disagreement and still orders it correctly', () => {
+  const ranked = rankHits(
+    [
+      hit('runbooks/index-reload.md', {
+        zone: 'company', tier: 'COMPANY', distance: 2, rank: 1, ageDays: 900, owner: 'eng',
+        snippet: 'index reload procedure swap generation atomic readers',
+      }),
+      hit('runbooks/index-reload-current.md', {
+        zone: 'team', tier: 'TEAM', distance: 1, rank: 1, ageDays: 4, owner: 'team',
+        snippet: 'index reload procedure swap generation atomic readers current',
+      }),
+    ],
+    zones([
+      { name: 'company', halfLifeDays: 365 },
+      { name: 'team', halfLifeDays: 180 },
+    ]),
+    RANKING,
+    'index reload procedure',
+  );
+
+  assert.equal(ranked[0]?.documentId, 'runbooks/index-reload-current.md', 'fresh and owned wins');
+  assert.equal(ranked[0]?.conflict, true, 'and the reader is told the other exists');
+  assert.deepEqual(ranked[0]?.conflictWith, ['company/runbooks/index-reload.md']);
 });
