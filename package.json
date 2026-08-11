@@ -8,7 +8,8 @@
     "node": ">=22.18.0"
   },
   "bin": {
-    "kns": "./bin/kns.js"
+    "kns": "./bin/kns.js",
+    "kns-mcp": "./bin/kns-mcp.js"
   },
   "files": [
     "bin",
