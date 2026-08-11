@@ -8,16 +8,19 @@
  */
 
 import { KnsError, ok } from '../core/errors.ts';
-import { loadRegistry } from '../core/registry.ts';
+import { findZone, loadRegistry } from '../core/registry.ts';
 import type { Registry } from '../core/registry.ts';
+import type { Zone } from '../core/types.ts';
+import { buildDraft, readSource, writeDraft } from '../promote/draft.ts';
+import { formatFindings } from '../promote/sanitize.ts';
 import { readCorpus, suggest } from '../promote/suggest.ts';
 import type { Suggestion } from '../promote/suggest.ts';
-import { flagBoolean, flagString, unknownFlags } from './args.ts';
+import { flagBoolean, flagNumber, flagString, unknownFlags } from './args.ts';
 import type { ParsedArgs } from './args.ts';
 import type { CliContext } from './zone.ts';
 
 /** Flags accepted by the promote commands. */
-const PROMOTE_FLAGS = ['json', 'to', 'limit'];
+const PROMOTE_FLAGS = ['json', 'to', 'limit', 'dry-run', 'as', 'review-days'];
 
 /**
  * Locate the corpus directory behind the private zone.
@@ -52,6 +55,35 @@ export function userCorpusRoot(registry: Registry): string {
     );
   }
   return root;
+}
+
+/**
+ * Locate the checkout behind a named target zone.
+ *
+ * @param registry - Loaded registry.
+ * @param name - Zone name.
+ * @returns Absolute path to the zone's checkout.
+ * @throws {KnsError} When the zone is unknown or declares no root.
+ */
+export function targetZoneRoot(registry: Registry, name: string): { zone: Zone; root: string } {
+  const zone = findZone(registry, name);
+  if (zone === null) {
+    throw new KnsError('invalid_request', `no zone named "${name}"`, 'run kns zone list');
+  }
+  if (zone.tier === 'USER') {
+    throw new KnsError(
+      'invalid_request',
+      `zone "${name}" is the private tier; promotion targets a shared zone`,
+      'promote to a TEAM or COMPANY zone',
+    );
+  }
+
+  const index = zone.transport.args.indexOf('--root');
+  const root = index === -1 ? undefined : zone.transport.args[index + 1];
+  if (root === undefined || root === '') {
+    throw new KnsError('invalid_request', `zone "${name}" does not declare a --root path`);
+  }
+  return { zone, root };
 }
 
 /** Render a suggestion for human-readable output. */
@@ -104,9 +136,66 @@ export async function runPromote(args: ParsedArgs, context: CliContext): Promise
     return 0;
   }
 
+  if (subcommand === 'draft') {
+    const documentId = args.positional[2];
+    if (documentId === undefined) {
+      throw new KnsError('invalid_request', 'document id is required', 'kns promote draft <id> --to <zone>');
+    }
+
+    const target = flagString(args, 'to');
+    if (target === null) {
+      throw new KnsError('invalid_request', '--to <zone> is required', 'run kns zone list');
+    }
+
+    const registry = await loadRegistry(context.home);
+    const { zone, root } = targetZoneRoot(registry, target);
+    const sourceText = await readSource(userCorpusRoot(registry), documentId);
+    const reviewDays = flagNumber(args, 'review-days');
+
+    const plan = buildDraft({
+      documentId,
+      sourceText,
+      targetRoot: root,
+      zone,
+      promotedBy: flagString(args, 'as') ?? process.env['USER'] ?? 'unknown',
+      now: new Date(),
+      ...(reviewDays === null ? {} : { reviewDays }),
+    });
+
+    const dryRun = flagBoolean(args, 'dry-run');
+    if (!dryRun) await writeDraft(plan);
+
+    if (flagBoolean(args, 'json')) {
+      context.write(
+        JSON.stringify(
+          ok({
+            documentId: plan.documentId,
+            targetFile: plan.targetFile,
+            written: !dryRun,
+            findings: plan.sanitizer.findings,
+            contents: dryRun ? plan.contents : undefined,
+          }),
+          null,
+          2,
+        ),
+      );
+    } else {
+      context.write(
+        [
+          formatFindings(plan.sanitizer),
+          dryRun ? `would write ${plan.targetFile}` : `wrote ${plan.targetFile}`,
+          dryRun ? '' : 'review it, then: kns promote publish --confirm',
+        ]
+          .filter((line) => line !== '')
+          .join('\n'),
+      );
+    }
+    return 0;
+  }
+
   throw new KnsError(
     'invalid_request',
     `unknown subcommand "promote ${subcommand}"`,
-    'expected one of: suggest',
+    'expected one of: suggest, draft',
   );
 }
