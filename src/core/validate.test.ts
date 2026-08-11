@@ -26,6 +26,7 @@ function validZone(): Record<string, unknown> {
     owner: 'platform-team',
     sourceRepo: 'git@example.com:org/platform-docs.git',
     neverEarlyExit: false,
+    delegatesTo: [],
   };
 }
 

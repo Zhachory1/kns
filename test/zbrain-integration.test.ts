@@ -68,6 +68,7 @@ function zbrainZone(root: string): Zone {
     owner: null,
     sourceRepo: null,
     neverEarlyExit: false,
+    delegatesTo: [],
   };
 }
 

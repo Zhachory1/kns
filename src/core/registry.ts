@@ -101,6 +101,8 @@ export function parseRegistry(input: unknown): ValidationResult<Registry> {
     zones.push(parsed.value);
   }
 
+  issues.push(...validateDelegation(zones));
+
   if (issues.length > 0) return { ok: false, issues };
   return { ok: true, value: { schemaVersion: SCHEMA_VERSION, zones } };
 }
@@ -234,13 +236,115 @@ export function namespaceMatches(namespace: string, scope: string | null): boole
  * @returns Matching zones sorted by distance, then by name for determinism.
  */
 export function selectZones(registry: Registry, scope: string | null = null): Zone[] {
-  return registry.zones
-    .filter((zone) => namespaceMatches(zone.namespace, scope))
+  const matched = registry.zones.filter((zone) => namespaceMatches(zone.namespace, scope));
+
+  return expandDelegated(registry, matched)
     .sort((left, right) =>
       left.distance === right.distance
         ? left.name.localeCompare(right.name)
         : left.distance - right.distance,
     );
+}
+
+/** Deepest delegation chain allowed before the registry is rejected. */
+export const MAX_DELEGATION_DEPTH = 8;
+
+/**
+ * Validate the delegation graph.
+ *
+ * Delegation is how a zone that outgrows its engine's corpus limits gets sharded, so
+ * the graph is load-bearing. A cycle would make resolution non-terminating and an
+ * unknown target would silently drop a shard, so both fail closed at load time rather
+ * than surfacing as a missing answer later.
+ *
+ * @param zones - Zones to validate.
+ * @returns Issues found, empty when the graph is sound.
+ */
+export function validateDelegation(zones: readonly Zone[]): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const byName = new Map(zones.map((zone) => [zone.name, zone]));
+
+  for (const zone of zones) {
+    for (const target of zone.delegatesTo) {
+      if (target === zone.name) {
+        issues.push({ path: `registry.zones.${zone.name}.delegatesTo`, message: 'a zone cannot delegate to itself' });
+        continue;
+      }
+      const child = byName.get(target);
+      if (child === undefined) {
+        issues.push({
+          path: `registry.zones.${zone.name}.delegatesTo`,
+          message: `delegates to unknown zone "${target}"`,
+        });
+        continue;
+      }
+      if (!namespaceMatches(child.namespace, zone.namespace)) {
+        issues.push({
+          path: `registry.zones.${zone.name}.delegatesTo`,
+          message: `"${target}" (${child.namespace}) is not beneath ${zone.namespace}`,
+        });
+      }
+    }
+  }
+
+  const state = new Map<string, 'visiting' | 'done'>();
+
+  const walk = (name: string, depth: number, trail: string[]): void => {
+    if (depth > MAX_DELEGATION_DEPTH) {
+      issues.push({
+        path: `registry.zones.${name}.delegatesTo`,
+        message: `delegation deeper than ${MAX_DELEGATION_DEPTH}: ${trail.join(' -> ')}`,
+      });
+      return;
+    }
+    if (state.get(name) === 'visiting') {
+      issues.push({
+        path: `registry.zones.${name}.delegatesTo`,
+        message: `delegation cycle: ${[...trail, name].join(' -> ')}`,
+      });
+      return;
+    }
+    if (state.get(name) === 'done') return;
+
+    state.set(name, 'visiting');
+    for (const target of byName.get(name)?.delegatesTo ?? []) {
+      if (byName.has(target)) walk(target, depth + 1, [...trail, name]);
+    }
+    state.set(name, 'done');
+  };
+
+  for (const zone of zones) walk(zone.name, 0, []);
+  return issues;
+}
+
+/**
+ * Expand a set of zones to include everything they delegate to.
+ *
+ * A scoped query names a zone by namespace; the shards beneath it are part of the same
+ * answer, so selecting the parent must select the children too. Otherwise sharding a
+ * zone would silently shrink what a scoped query can find.
+ *
+ * @param registry - Registry to expand within.
+ * @param selected - Zones already selected.
+ * @returns The selection plus every zone reachable through delegation.
+ */
+export function expandDelegated(registry: Registry, selected: readonly Zone[]): Zone[] {
+  const byName = new Map(registry.zones.map((zone) => [zone.name, zone]));
+  const result = new Map(selected.map((zone) => [zone.name, zone]));
+  const queue = [...selected];
+
+  while (queue.length > 0) {
+    const zone = queue.shift();
+    if (zone === undefined) continue;
+    for (const target of zone.delegatesTo) {
+      const child = byName.get(target);
+      if (child === undefined || result.has(child.name)) continue;
+      result.set(child.name, child);
+      queue.push(child);
+    }
+  }
+
+  return [...result.values()];
 }
 
 /**

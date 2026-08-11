@@ -149,6 +149,7 @@ export function fixtureRegistry(): Registry {
       owner: zone.owner,
       sourceRepo: null,
       neverEarlyExit: false,
+    delegatesTo: [],
     })),
   };
 }

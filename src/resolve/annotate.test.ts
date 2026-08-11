@@ -20,6 +20,7 @@ function zone(overrides: Partial<Zone> = {}): Zone {
     owner: 'platform-team',
     sourceRepo: null,
     neverEarlyExit: false,
+    delegatesTo: [],
     ...overrides,
   };
 }

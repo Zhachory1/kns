@@ -30,6 +30,7 @@ function fakeZone(mode: string, overrides: Partial<Zone> = {}, tag = uniqueTag()
     owner: null,
     sourceRepo: null,
     neverEarlyExit: false,
+    delegatesTo: [],
     ...overrides,
   };
 }
