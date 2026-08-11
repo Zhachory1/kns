@@ -1,0 +1,115 @@
+name: Release train
+
+# Lands the implementation one pull request at a time, three times a day.
+#
+# Every branch under refs/heads/drip/* holds exactly one commit from the original
+# implementation sequence, in order. Each run picks the lowest-numbered branch that is
+# not yet an ancestor of main, opens a pull request for it, verifies it, and merges.
+#
+# Two deliberate choices worth knowing about:
+#
+#   * Verification runs inline, in this job, rather than relying on the CI workflow.
+#     Pull requests opened with GITHUB_TOKEN do not trigger other workflows — that is
+#     GitHub's recursion guard — so a drip that waited for CI would wait forever.
+#   * The merge is a real merge commit, not a squash or rebase. Those rewrite SHAs,
+#     which would leave every later drip branch based on a commit no longer in main's
+#     history, and each subsequent pull request would show the whole backlog instead of
+#     one change.
+
+on:
+  schedule:
+    # 08:00, 12:00, and 16:00 US Pacific (16:00, 20:00, 00:00 UTC).
+    - cron: '0 16 * * *'
+    - cron: '0 20 * * *'
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    inputs:
+      count:
+        description: How many pull requests to land in this run
+        required: false
+        default: '1'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-train
+  cancel-in-progress: false
+
+jobs:
+  land:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Land the next pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COUNT: ${{ github.event.inputs.count || '1' }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "release-train[bot]"
+          git config user.email "release-train@users.noreply.github.com"
+
+          for _ in $(seq 1 "$COUNT"); do
+            git fetch origin --prune --quiet
+            git checkout --quiet main
+            git reset --hard origin/main --quiet
+
+            # The next branch is the lowest-numbered one main has not absorbed yet.
+            next=""
+            for ref in $(git for-each-ref --format='%(refname:short)' --sort=refname 'refs/remotes/origin/drip/*'); do
+              if ! git merge-base --is-ancestor "$ref" HEAD; then
+                next="${ref#origin/}"
+                break
+              fi
+            done
+
+            if [ -z "$next" ]; then
+              echo "release train complete — every drip branch is merged"
+              exit 0
+            fi
+
+            echo "::group::landing $next"
+            subject=$(git log -1 --format=%s "origin/$next")
+
+            # Verify the branch on its own terms. Early commits predate some scripts,
+            # so --if-present is what keeps this honest rather than merely green.
+            git checkout --quiet -B verify "origin/$next"
+            if [ -f package.json ]; then
+              npm ci --ignore-scripts --no-audit --no-fund
+              npm run typecheck --if-present
+              npm test --if-present
+              npm run docs:check --if-present
+            else
+              echo "no package.json at this commit; nothing to verify"
+            fi
+            git checkout --quiet main
+
+            url=$(gh pr list --head "$next" --state open --json url --jq '.[0].url // empty')
+            if [ -z "$url" ]; then
+              url=$(gh pr create \
+                --base main \
+                --head "$next" \
+                --title "$subject" \
+                --body "$(git log -1 --format=%b "origin/$next")
+
+---
+
+Landed by the release train: one pull request at a time, three a day. Verified in the
+scheduled job before merge, because pull requests opened with \`GITHUB_TOKEN\` do not
+trigger other workflows.")
+            fi
+
+            echo "opened $url"
+            gh pr merge "$url" --merge --delete-branch=false
+            echo "::endgroup::"
+          done
