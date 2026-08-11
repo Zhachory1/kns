@@ -17,6 +17,7 @@ import type { Registry } from '../core/registry.ts';
 import { groupByDistance, selectZones } from '../core/registry.ts';
 import type { Hit, ResolveRequest, ResolveResult, Warning, Zone } from '../core/types.ts';
 import { KnsError } from '../core/errors.ts';
+import type { HitCache } from '../cache/store.ts';
 import type { ZoneClient } from '../zone/client.ts';
 import { annotate } from './annotate.ts';
 import { decideEarlyExit } from './early-exit.ts';
@@ -35,6 +36,8 @@ export interface ResolveDeps {
   createClient: ClientFactory;
   /** Reference time, injected so ageing is testable. */
   now?: Date;
+  /** TTL cache for shared zones. Omitted to disable caching entirely. */
+  cache?: HitCache;
 }
 
 /** Outcome of querying one zone. */
@@ -63,10 +66,30 @@ export async function queryZone(
 ): Promise<ZoneOutcome> {
   const client = deps.createClient(zone);
   const now = deps.now ?? new Date();
+  const cacheable = deps.cache !== undefined && zone.ttlSeconds > 0 && zone.tier !== 'USER';
 
   try {
+    if (cacheable && deps.cache !== undefined) {
+      const peeked = deps.cache.peek(zone.name, request.query, request.k, zone.ttlSeconds);
+      if (peeked !== null) {
+        // Revalidate against the zone's index generation. status() is a single cheap
+        // call; a stale answer served for a full TTL after a reindex is not.
+        const status = await client.status(deadlineMs);
+        if ((status.generation ?? '') === peeked.generation) {
+          deps.cache.touch(zone.name, request.query, request.k);
+          return { zone, hits: peeked.hits, warning: null };
+        }
+      }
+    }
+
     const raw = await client.search(request.query, request.k, deadlineMs);
-    return { zone, hits: annotate(raw, zone, now), warning: null };
+    const hits = annotate(raw, zone, now);
+
+    if (cacheable && deps.cache !== undefined) {
+      const status = await client.status(deadlineMs);
+      deps.cache.put(zone.name, request.query, request.k, status.generation, hits, zone.ttlSeconds);
+    }
+    return { zone, hits, warning: null };
   } catch (error) {
     const code = error instanceof KnsError ? error.code : 'internal';
     return {

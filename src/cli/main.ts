@@ -13,6 +13,7 @@ import type { ErrorCode } from '../core/errors.ts';
 import { knsHome } from '../core/registry.ts';
 import { describeVersion } from '../version.ts';
 import { flagBoolean, parseArgs } from './args.ts';
+import { runCache } from './cache.ts';
 import { runResolve } from './resolve.ts';
 import { runZone } from './zone.ts';
 import type { CliContext } from './zone.ts';
@@ -28,6 +29,8 @@ usage:
   kns zone remove <name> [--json]
   kns resolve <query> [--k <n>] [--mode exact|broad] [--scope <ns>]
                       [--no-early-exit] [--json]
+  kns cache stats [--json]
+  kns cache purge [--zone <name>] [--json]
   kns --version
 
 docs: DESIGN.md, docs/contract-cli.md`;
@@ -76,6 +79,7 @@ export async function run(
 
     if (command === 'zone') return await runZone(args, cli);
     if (command === 'resolve') return await runResolve(args, cli);
+    if (command === 'cache') return await runCache(args, cli);
 
     throw new KnsError(
       'invalid_request',
