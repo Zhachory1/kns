@@ -13,8 +13,10 @@ copying everything everywhere.
 
 ## Status
 
-**Design stage.** This repository currently contains the design, the roadmap, and the
-PR-by-PR implementation plan. No runtime code has been written yet.
+**0.1.0 — the whole plan is implemented.** Zone registry, MCP zone client, the
+resolution walk with ranking, early exit, and the TTL cache, the `kns-mcp` server, the
+evaluation harness, the promotion workflow end to end, demand signals, the review
+sweep, and zone delegation.
 
 Start here:
 
@@ -66,9 +68,7 @@ a git repository of Markdown; access control is repository access.
 
 The only genuinely new components are the resolver/router and the promotion workflow.
 
-## Planned surface
-
-Once M1–M4 land:
+## Command surface
 
 ```bash
 kns zone add --name team-platform --namespace company/platform --tier TEAM \

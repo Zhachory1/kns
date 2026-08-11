@@ -1,6 +1,6 @@
 {
   "name": "kns",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Hierarchical RAG with DNS-like resolution: local, team, and company knowledge zones",
   "type": "module",
   "license": "MIT",
@@ -23,8 +23,9 @@
     "test": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 --test-coverage-include=src/** --test-coverage-exclude=**/*.test.ts",
     "test:watch": "node --test --watch",
     "docs:check": "node scripts/docs-check.mjs",
-    "check": "npm run typecheck && npm test && npm run docs:check",
-    "bench:tiers": "node scripts/bench-tiers.mjs"
+    "check": "npm run typecheck && npm test && npm run docs:check && npm run bench:tiers",
+    "bench:tiers": "node scripts/bench-tiers.mjs",
+    "docs:gen": "node scripts/docs-gen.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",
