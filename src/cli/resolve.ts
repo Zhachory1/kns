@@ -35,7 +35,7 @@ function describeHit(hit: Hit, index: number): string {
 }
 
 /** Render the whole result for human-readable output. */
-function describeResult(result: ResolveResult): string {
+function describeResult(result: ResolveResult, explain: boolean): string {
   const lines: string[] = [];
 
   if (result.hits.length === 0) {
@@ -49,6 +49,7 @@ function describeResult(result: ResolveResult): string {
     '',
     `zones: ${result.zonesQueried.join(', ') || 'none'} · early exit: ${exit} · ${result.resolveMs}ms${result.partial ? ' · partial' : ''}`,
   );
+  if (explain) lines.push(`why: ${result.explanation}`);
   for (const warning of result.warnings) {
     lines.push(`warning [${warning.code}]${warning.zone === null ? '' : ` ${warning.zone}`}: ${warning.message}`);
   }
@@ -101,7 +102,9 @@ export async function runResolve(args: ParsedArgs, context: CliContext): Promise
 
   const result = await resolve(parsed.value, deps);
   context.write(
-    flagBoolean(args, 'json') ? JSON.stringify(ok(result), null, 2) : describeResult(result),
+    flagBoolean(args, 'json')
+      ? JSON.stringify(ok(result), null, 2)
+      : describeResult(result, flagBoolean(args, 'explain')),
   );
   return 0;
 }
