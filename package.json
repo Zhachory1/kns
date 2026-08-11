@@ -1,0 +1,28 @@
+{
+  "name": "kns",
+  "version": "0.0.0",
+  "description": "Hierarchical RAG with DNS-like resolution: local, team, and company knowledge zones",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 --test-coverage-exclude=**/*.test.ts --test-coverage-exclude=test/** --test-coverage-exclude=fixtures/** --test-coverage-exclude=scripts/**",
+    "test:watch": "node --test --watch",
+    "docs:check": "node scripts/docs-check.mjs",
+    "check": "npm run typecheck && npm test && npm run docs:check"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.0"
+  },
+  "keywords": [
+    "rag",
+    "retrieval",
+    "mcp",
+    "knowledge-management",
+    "local-first"
+  ]
+}

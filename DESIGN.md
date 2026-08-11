@@ -342,8 +342,9 @@ Two gates, both enforced in CI, both blocking merge. See
 
 ### 7.1 Test coverage — minimum 80%
 
-- Runner: `node --test` + `c8`. Thresholds: **lines 80, branches 80, functions 80,
-  statements 80**. CI fail below.
+- Runner: `node --test` with built-in coverage (`--experimental-test-coverage`).
+  Thresholds: **lines 80, branches 80, functions 80**. CI fail below. Zero test
+  dependencies — Node run TypeScript source direct, no build step for tests.
 - Threshold set in PR-01 and **never lowered**. Ratchet only up.
 - Every PR in `docs/plan-prs.md` carry explicit `Tests:` line. No PR merge without
   tests for its own new branches.
@@ -355,8 +356,11 @@ Two gates, both enforced in CI, both blocking merge. See
 | Integration | ~20% | resolver against fake + real `zbrain-mcp` zones, cache hit/miss, partial failure |
 | E2E | ~10% | `kns` CLI and `kns-mcp` over stdio against fixture corpora |
 
-- Hard-to-cover code (process spawn, fs errors) get injected seams, not `c8` ignore
-  comments. `c8` ignore need a reviewer-visible reason comment.
+- Hard-to-cover code (process spawn, fs errors) get injected seams, not coverage-ignore
+  comments. Any ignore need a reviewer-visible reason comment.
+- Coverage gate proven live by a self-test: run runner against deliberately
+  under-tested fixture, assert non-zero exit. Configured-but-unenforced threshold is
+  worse than none.
 - **Property tests** for the ranker: monotonic in relevance, monotonic in freshness,
   deterministic under permutation of input order.
 - **Golden tests** for every JSON envelope shape, so schema drift is loud.
@@ -365,8 +369,8 @@ Two gates, both enforced in CI, both blocking merge. See
 
 `npm run docs:check` fail if any of:
 
-1. Exported TS symbol missing TSDoc (`eslint-plugin-jsdoc`, `require-jsdoc` on
-   exports).
+1. Exported TS symbol missing TSDoc (own zero-dep checker in `src/tools/docs-check.ts`,
+   itself tested like any other module).
 2. CLI command/flag exists in code but missing from `docs/contract-cli.md`.
 3. MCP tool or input field exists in code but missing from `docs/contract-mcp.md`.
 4. Config key exists in schema but missing from `docs/configuration.md`.
@@ -443,7 +447,8 @@ authority. Metrics:
 | Cache | SQLite | same dependency footprint as ZBrain |
 | Zone distribution | git repo of markdown | ACL, audit, review, revert all free |
 | Publish path | `gh pr create` | human gate + audit trail without building one |
-| Test/coverage | `node --test` + `c8` @ 80% | stdlib runner, no framework lock-in |
+| Test/coverage | `node --test` built-in coverage @ 80% | stdlib runner + stdlib coverage; zero test deps, no framework lock-in |
+| Doc gate | own checker in `src/tools/docs-check.ts` | zero deps, and the gate itself is unit-tested |
 
 Rejected:
 
