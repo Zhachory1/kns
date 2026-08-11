@@ -320,3 +320,56 @@ test('a corrupt registry fails closed rather than loading a subset', async () =>
   assert.equal(result.code, 1);
   assert.match(result.err, /registry_invalid|validation failed/);
 });
+
+test('promote suggest requires a USER zone with a root', async () => {
+  const noZone = await cli(['promote', 'suggest']);
+  assert.equal(noZone.code, 1);
+  assert.match(noZone.err, /no USER zone is configured/);
+});
+
+test('promote suggest ranks candidates and writes nothing', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'kns-cli-'));
+  const corpus = await mkdtemp(path.join(tmpdir(), 'kns-corpus-'));
+  const fs = await import('node:fs/promises');
+  const body = 'y'.repeat(250);
+
+  await fs.writeFile(path.join(corpus, 'shared.md'), `---\nshare: team\nkind: concept\n---\n\n${body}\n`, 'utf8');
+  await fs.writeFile(path.join(corpus, 'scratch.md'), `---\nkind: inbox\n---\n\n${body}\n`, 'utf8');
+
+  const added = await cli(
+    ['zone', 'add', '--name', 'user', '--namespace', 'user', '--tier', 'USER', '--distance', '0', '--root', corpus],
+    home,
+  );
+  assert.equal(added.code, 0, added.err);
+
+  const before = (await fs.readdir(corpus)).sort();
+  const result = await cli(['promote', 'suggest', '--json'], home);
+  assert.equal(result.code, 0, result.err);
+
+  const payload = JSON.parse(result.out) as {
+    result: { suggestions: { documentId: string; requestedScope: string | null }[] };
+  };
+  assert.equal(payload.result.suggestions[0]?.documentId, 'shared.md');
+  assert.equal(payload.result.suggestions[0]?.requestedScope, 'team');
+  assert.deepEqual((await fs.readdir(corpus)).sort(), before, 'suggest must not write');
+});
+
+test('promote suggest reports an empty corpus helpfully', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'kns-cli-'));
+  const corpus = await mkdtemp(path.join(tmpdir(), 'kns-corpus-'));
+
+  await cli(
+    ['zone', 'add', '--name', 'user', '--namespace', 'user', '--tier', 'USER', '--distance', '0', '--root', corpus],
+    home,
+  );
+
+  const result = await cli(['promote', 'suggest'], home);
+  assert.equal(result.code, 0);
+  assert.match(result.out, /no promotion candidates/);
+});
+
+test('an unknown promote subcommand is rejected', async () => {
+  const result = await cli(['promote', 'yeet']);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /unknown subcommand "promote yeet"/);
+});
