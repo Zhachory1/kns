@@ -34,6 +34,8 @@ usage:
   kns cache purge [--zone <name>] [--json]
   kns promote suggest [--to <zone>] [--json]
   kns promote draft <id> --to <zone> [--dry-run] [--review-days <n>] [--json]
+  kns promote publish <id> --to <zone> --confirm [--json]
+  kns promote revoke <id> --to <zone> --confirm [--json]
   kns --version
 
 docs: DESIGN.md, docs/contract-cli.md`;
