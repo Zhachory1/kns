@@ -41,6 +41,8 @@ export interface RankingConfig {
   unownedPenalty: number;
   /** Multiplier applied to documents past their review date. */
   staleFactor: number;
+  /** Floor for the query-coverage factor, so a terse snippet is not zeroed out. */
+  coverageFloor: number;
 }
 
 /** When the resolution walk may stop before reaching every zone. */
@@ -78,6 +80,7 @@ const RANGES: Record<string, Record<string, { min: number; max: number; integer:
     nearnessBase: { min: 0.1, max: 1, integer: false },
     unownedPenalty: { min: 0.1, max: 1, integer: false },
     staleFactor: { min: 0.05, max: 1, integer: false },
+    coverageFloor: { min: 0, max: 1, integer: false },
   },
   earlyExit: {
     marginMin: { min: 0, max: 1, integer: false },
@@ -100,7 +103,7 @@ export function defaultConfig(): KnsConfig {
     // by so little that the nearness prior decides every comparison — a rank-9 local note
     // outscores a rank-1 fresh company document, which makes nearness an override
     // rather than a prior. PR-11 tunes this against the harness.
-    ranking: { rrfK: 10, nearnessBase: 0.9, unownedPenalty: 0.85, staleFactor: 0.5 },
+    ranking: { rrfK: 10, nearnessBase: 0.9, unownedPenalty: 0.85, staleFactor: 0.5, coverageFloor: 0.3 },
     earlyExit: { marginMin: 0.15, authoritativeMaxAgeDays: 90, minHits: 1 },
   };
 }

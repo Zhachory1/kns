@@ -188,7 +188,7 @@ export async function resolve(request: ResolveRequest, deps: ResolveDeps): Promi
     }
 
     const decision = decideEarlyExit(
-      rankHits(bandHits, byName, deps.config.ranking),
+      rankHits(bandHits, byName, deps.config.ranking, request.query),
       band,
       request,
       deps.config.earlyExit,
@@ -210,7 +210,7 @@ export async function resolve(request: ResolveRequest, deps: ResolveDeps): Promi
   }
 
   return {
-    hits: rankHits(hits, byName, deps.config.ranking).slice(0, request.k),
+    hits: rankHits(hits, byName, deps.config.ranking, request.query).slice(0, request.k),
     zonesQueried,
     earlyExitAt,
     explanation,
