@@ -71,6 +71,7 @@ function zones(entries: { name: string; halfLifeDays: number }[]): Map<string, Z
         owner: null,
         sourceRepo: null,
         neverEarlyExit: false,
+    delegatesTo: [],
       } satisfies Zone,
     ]),
   );

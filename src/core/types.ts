@@ -62,6 +62,8 @@ export interface Zone {
   sourceRepo: string | null;
   /** When true, the resolution walk never stops at this zone. */
   neverEarlyExit: boolean;
+  /** Names of zones this one delegates a sub-namespace to. */
+  delegatesTo: string[];
 }
 
 /** Where a hit came from and how much to trust it. */

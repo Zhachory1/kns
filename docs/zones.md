@@ -72,4 +72,17 @@ company
 zone that outgrows the per-zone corpus limits gets sharded: split it into sub-zones,
 each with its own index and its own owner.
 
-Cycles are rejected at load time and delegation depth is capped.
+```bash
+kns zone add --name company --namespace company --tier COMPANY --distance 2 \
+             --root ~/zones/company --delegates-to platform
+```
+
+Selecting a parent namespace also selects everything beneath it. Otherwise sharding a
+zone would silently shrink what a scoped query can find — the exact failure sharding
+was meant to avoid.
+
+Cycles, self-delegation, unknown targets, and chains deeper than the cap are all
+rejected at load time. A cycle would make resolution non-terminating and an unknown
+target would silently drop a shard; both are far easier to diagnose as a registry
+error than as a missing answer weeks later. A delegated zone must also sit beneath its
+parent's namespace, so the tree stays a tree.

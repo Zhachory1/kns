@@ -23,6 +23,7 @@ function fakeZone(mode: string, overrides: Partial<Zone> = {}): Zone {
     owner: null,
     sourceRepo: null,
     neverEarlyExit: false,
+    delegatesTo: [],
     ...overrides,
   };
 }

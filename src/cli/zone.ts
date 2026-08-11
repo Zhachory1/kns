@@ -43,6 +43,7 @@ const ADD_FLAGS = [
   'owner',
   'source-repo',
   'never-early-exit',
+  'delegates-to',
 ];
 
 /** Flags accepted by the read-only zone commands. */
@@ -87,6 +88,10 @@ function zoneFromFlags(args: ParsedArgs): Zone {
     distance: flagNumber(args, 'distance') ?? undefined,
     transport: { kind: 'stdio', command, args: transportArgs },
     neverEarlyExit: flagBoolean(args, 'never-early-exit'),
+    delegatesTo: (flagString(args, 'delegates-to') ?? '')
+      .split(',')
+      .map((name) => name.trim())
+      .filter((name) => name !== ''),
   };
 
   const ttl = flagNumber(args, 'ttl-seconds');
