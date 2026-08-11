@@ -23,7 +23,8 @@
     "test": "node --test --experimental-test-coverage --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 --test-coverage-include=src/** --test-coverage-exclude=**/*.test.ts",
     "test:watch": "node --test --watch",
     "docs:check": "node scripts/docs-check.mjs",
-    "check": "npm run typecheck && npm test && npm run docs:check"
+    "check": "npm run typecheck && npm test && npm run docs:check",
+    "bench:tiers": "node scripts/bench-tiers.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.2.0",

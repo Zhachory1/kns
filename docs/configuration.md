@@ -48,6 +48,7 @@ for you.
 | `nearnessBase` | `0.9` | Prior is `nearnessBase ^ distance` |
 | `unownedPenalty` | `0.85` | Applied to shared documents with no owner |
 | `staleFactor` | `0.5` | Applied past `review_by` |
+| `coverageFloor` | `0.3` | Floor for the query-coverage factor |
 
 ## Early exit
 
@@ -57,5 +58,7 @@ for you.
 | `authoritativeMaxAgeDays` | `90` | Older top hits do not stop the walk |
 | `minHits` | `1` | Minimum hits at a distance before stopping |
 
-Defaults are deliberately conservative: they fan out more than necessary. Real values
-are chosen from the eval harness in PR-11, as recorded in [evals](evals.md).
+Ranking defaults are measured, not guessed: see [evals](evals.md) for the run that
+produced them and the two that measurement corrected. Early-exit thresholds remain
+conservative — they fan out more than strictly necessary, which costs latency rather
+than correctness.

@@ -14,14 +14,30 @@ KNS therefore ranks on **rank**, not score, using Reciprocal Rank Fusion, and ap
 priors on top:
 
 ```
+coverage(hit)  = |query terms in snippet| / |query terms|
 rrf(hit)       = 1 / (rrfK + rankWithinZone)
 nearness(hit)  = nearnessBase ^ zone.distance
 freshness(hit) = exp(-ageDays / zone.halfLifeDays)
 authority(hit) = (hit.owned ? 1 : unownedPenalty)
                * (hit.pastReviewTtl ? staleFactor : 1)
 
-score = rrf * nearness * freshness * authority
+score = rrf * max(coverageFloor, coverage) * nearness * freshness * authority
 ```
+
+### Why coverage exists
+
+Reciprocal Rank Fusion assumes every ranker ranks the **same** corpus. Zones do not:
+their corpora are disjoint. So "rank 1 in the local zone" and "rank 1 in the company
+zone" are not comparable claims, and a zone holding a single weak match ties with the
+zone holding the exact answer — fusion has thrown away the only thing that
+distinguished them.
+
+Coverage restores that magnitude without reintroducing the calibration problem: it is
+the fraction of query terms present in the returned snippet, computed by KNS itself,
+identically for every zone. No engine's score is trusted.
+
+Measured effect on the harness: `authority@1` went from 60% to 100%. The floor keeps a
+terse snippet — a title, a summary line — from being zeroed out entirely.
 
 Nearness is a mild prior, not an override. A fresh, owned, top-ranked company document
 can and should outrank a weak local note — otherwise the hierarchy would just be a

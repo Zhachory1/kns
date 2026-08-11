@@ -14,6 +14,32 @@ import type { RankingConfig } from '../core/config.ts';
 import type { Hit, Zone } from '../core/types.ts';
 
 /**
+ * Fraction of the query's terms that appear in a hit's snippet.
+ *
+ * RRF assumes every ranker ranks the same corpus. Zones do not: their corpora are
+ * disjoint, so "rank 1 in the local zone" and "rank 1 in the company zone" are not
+ * comparable, and a zone holding one weak match ties with a zone holding the exact
+ * answer. Coverage restores the magnitude that fusion throws away, and it does so
+ * without trusting any engine's score — KNS computes it uniformly from the text every
+ * zone returns.
+ *
+ * @param query - The query text.
+ * @param snippet - The snippet the zone returned.
+ * @returns A value in [0, 1]. A query with no usable terms scores 1.
+ */
+export function coverage(query: string, snippet: string): number {
+  const terms = new Set(query.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+  if (terms.size === 0) return 1;
+
+  const present = new Set(snippet.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+  let matched = 0;
+  for (const term of terms) {
+    if (present.has(term)) matched += 1;
+  }
+  return matched / terms.size;
+}
+
+/**
  * Reciprocal Rank Fusion term.
  *
  * @param rankWithinZone - One-based rank the zone assigned.
@@ -80,9 +106,14 @@ export function authority(hit: Hit, config: RankingConfig): number {
  * @param config - Ranking weights.
  * @returns The fused score. Comparable within one response only.
  */
-export function scoreHit(hit: Hit, zone: Zone, config: RankingConfig): number {
+export function scoreHit(hit: Hit, zone: Zone, config: RankingConfig, query = ''): number {
+  // The floor keeps coverage from zeroing out a hit whose snippet simply does not
+  // repeat the query — a summary line, or an engine that returns a title.
+  const covered = Math.max(config.coverageFloor, coverage(query, hit.snippet));
+
   return (
     rrf(hit.rankWithinZone, config.rrfK) *
+    covered *
     nearness(hit.provenance.distance, config.nearnessBase) *
     freshness(hit.provenance.ageDays, zone.halfLifeDays) *
     authority(hit, config)
@@ -153,19 +184,21 @@ export function dedupe(hits: readonly Hit[]): Hit[] {
  * @param hits - Annotated hits from every zone queried.
  * @param zones - Zones by name, for per-zone half-life.
  * @param config - Ranking weights.
+ * @param query - Query text, used for the coverage factor.
  * @returns Ranked hits, best first.
  */
 export function rankHits(
   hits: readonly Hit[],
   zones: ReadonlyMap<string, Zone>,
   config: RankingConfig,
+  query = '',
 ): Hit[] {
   const scored = hits.map((hit) => {
     const zone = zones.get(hit.provenance.zone);
     const halfLife = zone?.halfLifeDays ?? 365;
     return {
       ...hit,
-      score: scoreHit(hit, { halfLifeDays: halfLife } as Zone, config),
+      score: scoreHit(hit, { halfLifeDays: halfLife } as Zone, config, query),
     };
   });
 
