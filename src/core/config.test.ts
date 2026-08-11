@@ -27,7 +27,7 @@ test('defaults are conservative and documented', () => {
   assert.equal(config.resolution.zoneDeadlineMs, 1500);
   assert.equal(config.resolution.resolveDeadlineMs, 4000);
   assert.equal(config.resolution.maxConcurrentZones, 4);
-  assert.equal(config.ranking.rrfK, 60);
+  assert.equal(config.ranking.rrfK, 10);
   assert.equal(config.ranking.nearnessBase, 0.9);
   assert.equal(config.earlyExit.marginMin, 0.15);
   assert.equal(config.earlyExit.authoritativeMaxAgeDays, 90);
@@ -40,7 +40,7 @@ test('parseConfig fills in defaults for absent sections and keys', () => {
   if (!result.ok) return;
   assert.equal(result.value.resolution.k, 5);
   assert.equal(result.value.resolution.zoneDeadlineMs, 1500);
-  assert.equal(result.value.ranking.rrfK, 60);
+  assert.equal(result.value.ranking.rrfK, 10);
 });
 
 test('parseConfig accepts null and undefined as "use defaults"', () => {
@@ -100,7 +100,7 @@ test('loadConfig merges a partial file over the defaults', async () => {
 
   const config = await loadConfig(home);
   assert.equal(config.resolution.k, 3);
-  assert.equal(config.ranking.rrfK, 60);
+  assert.equal(config.ranking.rrfK, 10);
 });
 
 test('loadConfig fails loudly rather than silently using defaults', async () => {

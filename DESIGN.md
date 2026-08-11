@@ -198,7 +198,7 @@ raw scores across zones. Use **Reciprocal Rank Fusion** on per-zone rank, then a
 priors:
 
 ```
-rrf(hit)       = 1 / (rrfK + rankWithinZone)          # rrfK = 60 default
+rrf(hit)       = 1 / (rrfK + rankWithinZone)          # rrfK = 10 default
 nearness(hit)  = nearnessBase ^ zone.distance          # 0.9 → 1.0, 0.9, 0.81 ...
 freshness(hit) = exp(-ageDays / zone.halfLifeDays)
 authority(hit) = hit.owned ? 1.0 : unownedPenalty      # unowned shared = weaker
