@@ -16,6 +16,7 @@ import { flagBoolean, parseArgs } from './args.ts';
 import { runCache } from './cache.ts';
 import { runPromote } from './promote.ts';
 import { runResolve } from './resolve.ts';
+import { runSignal } from './signal.ts';
 import { runZone } from './zone.ts';
 import type { CliContext } from './zone.ts';
 
@@ -36,6 +37,8 @@ usage:
   kns promote draft <id> --to <zone> [--dry-run] [--review-days <n>] [--json]
   kns promote publish <id> --to <zone> --confirm [--json]
   kns promote revoke <id> --to <zone> --confirm [--json]
+  kns signal status|enable|disable|stats|purge [--json]
+  kns signal export --confirm [--week <iso-week>]
   kns --version
 
 docs: DESIGN.md, docs/contract-cli.md`;
@@ -86,6 +89,7 @@ export async function run(
     if (command === 'resolve') return await runResolve(args, cli);
     if (command === 'cache') return await runCache(args, cli);
     if (command === 'promote') return await runPromote(args, cli);
+    if (command === 'signal') return await runSignal(args, cli);
 
     throw new KnsError(
       'invalid_request',

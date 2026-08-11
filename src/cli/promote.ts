@@ -21,6 +21,9 @@ import {
 } from '../promote/publish.ts';
 import { formatFindings } from '../promote/sanitize.ts';
 import { readCorpus, suggest } from '../promote/suggest.ts';
+import { cachePath } from '../cache/store.ts';
+import { DemandStore } from '../signal/demand.ts';
+import { loadSignalSettings } from '../signal/settings.ts';
 import type { Suggestion } from '../promote/suggest.ts';
 import { flagBoolean, flagNumber, flagString, unknownFlags } from './args.ts';
 import type { ParsedArgs } from './args.ts';
@@ -126,7 +129,18 @@ export async function runPromote(args: ParsedArgs, context: CliContext): Promise
     const documents = await readCorpus(userCorpusRoot(registry));
     const target = flagString(args, 'to');
 
-    let suggestions = suggest(documents, new Date());
+    const signal = await loadSignalSettings(context.home);
+    let demandCounts: Record<string, number> = {};
+    if (signal.enabled) {
+      const demand = new DemandStore(cachePath(context.home));
+      try {
+        demandCounts = demand.countsByDocument();
+      } finally {
+        demand.close();
+      }
+    }
+
+    let suggestions = suggest(documents, new Date(), demandCounts);
     if (target !== null) {
       suggestions = suggestions.filter(
         (suggestion) => suggestion.requestedScope === null || suggestion.requestedScope === target,

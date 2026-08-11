@@ -483,3 +483,64 @@ test('publish requires a document and a target zone', async () => {
   assert.match((await cli(['promote', 'publish'], home)).err, /document id is required/);
   assert.match((await cli(['promote', 'publish', 'note.md'], home)).err, /--to <zone> is required/);
 });
+
+test('demand signals are off until explicitly enabled', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'kns-cli-'));
+
+  const status = await cli(['signal', 'status', '--json'], home);
+  assert.equal(status.code, 0);
+  assert.equal((JSON.parse(status.out) as { result: { enabled: boolean } }).result.enabled, false);
+});
+
+test('exporting requires both the opt-in and an explicit confirmation', async () => {
+  const home = await mkdtemp(path.join(tmpdir(), 'kns-cli-'));
+
+  const noConfirm = await cli(['signal', 'export'], home);
+  assert.equal(noConfirm.code, 1);
+  assert.match(noConfirm.err, /--confirm is required/);
+
+  const disabled = await cli(['signal', 'export', '--confirm'], home);
+  assert.equal(disabled.code, 1);
+  assert.match(disabled.err, /demand signals are disabled/);
+});
+
+test('enabling, counting, exporting, and purging round-trips', async () => {
+  const home = await homeWithFakeZone();
+
+  assert.equal((await cli(['signal', 'enable'], home)).code, 0);
+  assert.equal((await cli(['resolve', 'index reload'], home)).code, 0);
+
+  const stats = await cli(['signal', 'stats', '--json'], home);
+  const rows = (JSON.parse(stats.out) as { result: { rows: { documentId: string }[] } }).result.rows;
+  assert.ok(rows.length > 0, 'a retrieval was counted');
+
+  const exported = await cli(['signal', 'export', '--confirm'], home);
+  assert.equal(exported.code, 0, exported.err);
+  const payload = JSON.parse(exported.out) as {
+    result: { reports: { bucket: string; reporter: string; documentId: string }[] };
+  };
+  assert.ok(payload.result.reports.length > 0);
+  assert.match(payload.result.reports[0]?.bucket ?? '', /^(1-2|3-5|6-10|10\+)$/);
+  assert.ok(!exported.out.includes('index reload'), 'the query must never appear in an export');
+
+  const purged = await cli(['signal', 'purge', '--json'], home);
+  assert.equal(purged.code, 0);
+  assert.equal((await cli(['signal', 'stats', '--json'], home)).out.includes('"rows": []'), true);
+});
+
+test('disabling stops the counting', async () => {
+  const home = await homeWithFakeZone();
+
+  await cli(['signal', 'enable'], home);
+  await cli(['signal', 'disable'], home);
+  await cli(['resolve', 'index reload'], home);
+
+  const stats = await cli(['signal', 'stats', '--json'], home);
+  assert.match(stats.out, /"rows": \[\]/);
+});
+
+test('an unknown signal subcommand is rejected', async () => {
+  const result = await cli(['signal', 'broadcast']);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /unknown subcommand "signal broadcast"/);
+});

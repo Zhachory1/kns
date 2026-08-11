@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -11,14 +12,19 @@ import { StdioZoneClient, decodeToolResult, toRawHits } from './client.ts';
 const root = path.resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const fakeServer = path.join(root, 'fixtures', 'fake-zone', 'server.mjs');
 
+/** A unique marker so process counts cannot see other tests' children. */
+function uniqueTag(): string {
+  return `kns-tag-${randomUUID()}`;
+}
+
 /** A zone pointing at the controllable fake server in a given mode. */
-function fakeZone(mode: string, overrides: Partial<Zone> = {}): Zone {
+function fakeZone(mode: string, overrides: Partial<Zone> = {}, tag = uniqueTag()): Zone {
   return {
     name: `fake-${mode}`,
     namespace: 'user',
     tier: 'USER',
     distance: 0,
-    transport: { kind: 'stdio', command: process.execPath, args: [fakeServer, '--mode', mode] },
+    transport: { kind: 'stdio', command: process.execPath, args: [fakeServer, '--mode', mode, '--tag', tag] },
     ttlSeconds: 0,
     halfLifeDays: 365,
     owner: null,
@@ -28,12 +34,16 @@ function fakeZone(mode: string, overrides: Partial<Zone> = {}): Zone {
   };
 }
 
-/** Count live child processes matching the fake server, for leak assertions. */
-function fakeServerCount(): number {
+/**
+ * Count live children carrying a given tag.
+ *
+ * Scoped by tag rather than by the server path: test files run in parallel, so a
+ * global count would see other tests' children and make this assertion flaky — which
+ * is worse than not asserting, because a flaky leak check gets muted.
+ */
+function taggedProcessCount(tag: string): number {
   try {
-    const output = execFileSync('/bin/sh', ['-c', `pgrep -f "${fakeServer}" | wc -l`], {
-      encoding: 'utf8',
-    });
+    const output = execFileSync('/bin/sh', ['-c', `pgrep -f "${tag}" | wc -l`], { encoding: 'utf8' });
     return Number(output.trim());
   } catch {
     return 0;
@@ -102,15 +112,14 @@ test('a healthy zone answers search, get, and status', async (t) => {
 });
 
 test('the client reuses one child process across calls', async (t) => {
-  const client = new StdioZoneClient(fakeZone('ok'));
+  const tag = uniqueTag();
+  const client = new StdioZoneClient(fakeZone('ok', {}, tag));
   t.after(() => client.close());
 
-  const before = fakeServerCount();
   await client.search('one', 5, 4000);
   await client.search('two', 5, 4000);
-  const after = fakeServerCount();
 
-  assert.ok(after - before <= 1, `expected at most one child, saw ${after - before}`);
+  assert.equal(taggedProcessCount(tag), 1, 'one zone must mean one child');
 });
 
 test('a zone using newline framing works identically', async (t) => {
@@ -148,18 +157,18 @@ test('a JSON-RPC error becomes zone_unavailable', async (t) => {
 });
 
 test('a slow zone times out, is reclaimed, and leaves no child behind', async (t) => {
-  const client = new StdioZoneClient(fakeZone('slow'));
+  const tag = uniqueTag();
+  const client = new StdioZoneClient(fakeZone('slow', {}, tag));
   t.after(() => client.close());
 
-  const before = fakeServerCount();
   await assert.rejects(
     () => client.search('q', 5, 150),
     (error: unknown) =>
       error instanceof KnsError && error.code === 'zone_timeout' && error.retryable === true,
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  assert.ok(fakeServerCount() <= before, 'the timed-out child must not survive');
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  assert.equal(taggedProcessCount(tag), 0, 'the timed-out child must not survive');
 });
 
 test('a zone that never completes the handshake times out', async (t) => {
