@@ -21,7 +21,7 @@ promotion → COMPANY root + signals.
 
 ## M0 — Scaffold and contracts
 
-**PRs:** 01–02 · **Ship:** nothing user-facing. Rails only.
+**PRs:** 01–02 · **Ship:** nothing user-facing. Rails only. · **Status: DONE**
 
 Goal: repo where every later PR is cheap and safe.
 
@@ -32,6 +32,12 @@ Goal: repo where every later PR is cheap and safe.
 
 **Exit:** CI green on empty-ish repo. Coverage gate proven to fail when dropped.
 Doc skeleton files exist and `docs:check` enforce them.
+
+**Met.** 56 tests pass. Coverage 100% line / 96% branch / 100% function vs 80 floor.
+`docs:check` green over 18 required docs. Gate proven live by
+`test/coverage-gate.test.ts` (runner exit non-zero on under-tested fixture). Toolchain
+landed zero-dep: Node run TypeScript direct, `node --test` built-in coverage, only
+`typescript` + `@types/node` in devDeps.
 
 **Risk:** over-engineering scaffold. Cap M0 at two PRs.
 
