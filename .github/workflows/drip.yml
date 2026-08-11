@@ -96,23 +96,16 @@ jobs:
 
             url=$(gh pr list --head "$next" --state open --json url --jq '.[0].url // empty')
             if [ -z "$url" ]; then
-              # The body is assembled in a file. Interpolating a commit message full
-              # of quotes and backticks straight into a shell argument is how the
-              # first version of this workflow failed.
+              # No heredoc: its terminator cannot survive YAML block indentation, and
+              # interpolating a commit message full of quotes into a shell argument
+              # cannot survive these commit messages. A file built with printf survives
+              # both.
               git log -1 --format=%b "origin/$next" > /tmp/pr-body.md
-              cat >> /tmp/pr-body.md <<'BODY'
-
----
-
-Landed by the release train: one pull request at a time, three a day. Verified in the
-scheduled job before merge, because pull requests opened with GITHUB_TOKEN do not
-trigger other workflows.
-BODY
-              url=$(gh pr create \
-                --base main \
-                --head "$next" \
-                --title "$subject" \
-                --body-file /tmp/pr-body.md)
+              printf '\n---\n\n%s\n%s\n' \
+                "Landed by the release train: one pull request at a time, three a day." \
+                "Verified in this scheduled job before merge, because pull requests opened with GITHUB_TOKEN do not trigger other workflows." \
+                >> /tmp/pr-body.md
+              url=$(gh pr create --base main --head "$next" --title "$subject" --body-file /tmp/pr-body.md)
             fi
 
             echo "opened $url"
