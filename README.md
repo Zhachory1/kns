@@ -21,6 +21,7 @@ Start here:
 - [`DESIGN.md`](DESIGN.md) — architecture, resolution algorithm, ranking, promotion,
   privacy, quality gates
 - [`ROADMAP.md`](ROADMAP.md) — milestones M0–M4
+- [`docs/setup-guide.md`](docs/setup-guide.md) — planned setup for new teams and companies
 - [`docs/plan-prs.md`](docs/plan-prs.md) — the 20 PRs that build it
 - [`docs/documentation-policy.md`](docs/documentation-policy.md) — documentation
   coverage rules
