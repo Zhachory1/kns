@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,18 +25,6 @@ function fakeZone(mode: string, overrides: Partial<Zone> = {}): Zone {
     neverEarlyExit: false,
     ...overrides,
   };
-}
-
-/** Count live child processes matching the fake server, for leak assertions. */
-function fakeServerCount(): number {
-  try {
-    const output = execFileSync('/bin/sh', ['-c', `pgrep -f "${fakeServer}" | wc -l`], {
-      encoding: 'utf8',
-    });
-    return Number(output.trim());
-  } catch {
-    return 0;
-  }
 }
 
 test('toRawHits reads several field spellings and skips unusable entries', () => {
@@ -105,12 +92,14 @@ test('the client reuses one child process across calls', async (t) => {
   const client = new StdioZoneClient(fakeZone('ok'));
   t.after(() => client.close());
 
-  const before = fakeServerCount();
   await client.search('one', 5, 4000);
+  const first = client.childState;
   await client.search('two', 5, 4000);
-  const after = fakeServerCount();
+  const second = client.childState;
 
-  assert.ok(after - before <= 1, `expected at most one child, saw ${after - before}`);
+  assert.equal(first.running, true, 'a live child after the first call');
+  assert.equal(second.running, true, 'still live after the second call');
+  assert.equal(second.pid, first.pid, 'one zone must mean one reused child');
 });
 
 test('a zone using newline framing works identically', async (t) => {
@@ -151,15 +140,16 @@ test('a slow zone times out, is reclaimed, and leaves no child behind', async (t
   const client = new StdioZoneClient(fakeZone('slow'));
   t.after(() => client.close());
 
-  const before = fakeServerCount();
   await assert.rejects(
     () => client.search('q', 5, 150),
     (error: unknown) =>
       error instanceof KnsError && error.code === 'zone_timeout' && error.retryable === true,
   );
 
-  await new Promise((resolve) => setTimeout(resolve, 400));
-  assert.ok(fakeServerCount() <= before, 'the timed-out child must not survive');
+  // The timeout reclaims the child via close(); wait for that teardown to settle,
+  // then assert on the client's own view of its child rather than the OS table.
+  await client.close();
+  assert.equal(client.childState.running, false, 'the timed-out child must not survive');
 });
 
 test('a zone that never completes the handshake times out', async (t) => {

@@ -165,6 +165,21 @@ export class StdioZoneClient implements ZoneClient {
   }
 
   /**
+   * Test seam: the current child's state, read from the owned ChildProcess
+   * rather than the OS process table.
+   *
+   * Counting processes with `pgrep` is racy and unreliable on CI. The client
+   * already owns exactly one child, so its liveness is authoritative:
+   * `running` is true only while a spawned child has neither been killed nor
+   * exited. `pid` is the OS pid or null when no child is live.
+   */
+  get childState(): { running: boolean; pid: number | null } {
+    const child = this.#child;
+    const running = child !== null && !child.killed && child.exitCode === null && child.signalCode === null;
+    return { running, pid: running ? (child?.pid ?? null) : null };
+  }
+
+  /**
    * Run a search against the zone.
    *
    * @param query - Free-text query.
