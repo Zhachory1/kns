@@ -94,5 +94,6 @@ export function annotate(rawHits: readonly RawHit[], zone: Zone, now: Date): Hit
     provenance: buildProvenance(raw, zone, now),
     alsoIn: [],
     conflict: false,
+    conflictWith: [],
   }));
 }

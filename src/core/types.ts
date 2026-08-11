@@ -98,6 +98,8 @@ export interface Hit {
   alsoIn: string[];
   /** True when another zone holds a conflicting version of this document. */
   conflict: boolean;
+  /** Zone-qualified ids of the hits this one conflicts with. */
+  conflictWith: string[];
 }
 
 /** A non-fatal problem encountered while resolving. */
