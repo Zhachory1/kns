@@ -9,6 +9,7 @@ import { loadConfig } from '../core/config.ts';
 import { loadRegistry } from '../core/registry.ts';
 import type { Hit, ResolveResult } from '../core/types.ts';
 import { issuesToError, parseResolveRequest } from '../core/validate.ts';
+import { HitCache, cachePath } from '../cache/store.ts';
 import { StdioZoneClient } from '../zone/client.ts';
 import { resolve } from '../resolve/resolver.ts';
 import type { ResolveDeps } from '../resolve/resolver.ts';
@@ -94,13 +95,21 @@ export async function runResolve(args: ParsedArgs, context: CliContext): Promise
   const parsed = parseResolveRequest(candidate);
   if (!parsed.ok) throw issuesToError(parsed.issues);
 
+  const cache = new HitCache(cachePath(context.home));
   const deps: ResolveDeps = {
     registry: await loadRegistry(context.home),
     config: await loadConfig(context.home),
     createClient: (zone) => new StdioZoneClient(zone),
+    cache,
   };
 
-  const result = await resolve(parsed.value, deps);
+  let result;
+  try {
+    result = await resolve(parsed.value, deps);
+  } finally {
+    cache.close();
+  }
+
   context.write(
     flagBoolean(args, 'json')
       ? JSON.stringify(ok(result), null, 2)
