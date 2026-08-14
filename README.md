@@ -13,14 +13,16 @@ copying everything everywhere.
 
 ## Status
 
-**Design stage.** This repository currently contains the design, the roadmap, and the
-PR-by-PR implementation plan. No runtime code has been written yet.
+**Implementation in progress.** Milestone M0 (scaffold, CI, coverage floor, docs gate,
+core domain types) has landed on `main`. The remaining milestones (M1–M4) land
+one pull request at a time via the release train; see `ROADMAP.md` for status.
 
 Start here:
 
 - [`DESIGN.md`](DESIGN.md) — architecture, resolution algorithm, ranking, promotion,
   privacy, quality gates
 - [`ROADMAP.md`](ROADMAP.md) — milestones M0–M4
+- [`docs/setup-guide.md`](docs/setup-guide.md) — planned setup for new teams and companies
 - [`docs/plan-prs.md`](docs/plan-prs.md) — the 20 PRs that build it
 - [`docs/documentation-policy.md`](docs/documentation-policy.md) — documentation
   coverage rules
