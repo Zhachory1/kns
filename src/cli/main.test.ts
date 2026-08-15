@@ -221,6 +221,93 @@ test('zone add accepts an explicit command and argument string', async () => {
   assert.deepEqual(payload.result.zone.transport.args, ['--root', '/elsewhere']);
 });
 
+/** Register a zone backed by the controllable fake server. */
+async function homeWithFakeZone(mode = 'ok'): Promise<string> {
+  const home = await mkdtemp(path.join(tmpdir(), 'kns-cli-'));
+  const server = path.resolve(
+    path.dirname(new URL(import.meta.url).pathname),
+    '../../fixtures/fake-zone/server.mjs',
+  );
+
+  const added = await cli(
+    [
+      'zone', 'add', '--name', 'user', '--namespace', 'user', '--tier', 'USER',
+      '--distance', '0', '--command', process.execPath, `--arg=${server} --mode ${mode}`,
+    ],
+    home,
+  );
+  assert.equal(added.code, 0, added.err);
+  return home;
+}
+
+test('resolve requires a query', async () => {
+  const result = await cli(['resolve']);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /query is required/);
+});
+
+test('resolve rejects an out-of-range k rather than clamping it', async () => {
+  const result = await cli(['resolve', 'anything', '--k', '99']);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /request\.k/);
+});
+
+test('resolve rejects unknown flags', async () => {
+  const result = await cli(['resolve', 'anything', '--scoop', 'x']);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /unknown flag\(s\): --scoop/);
+});
+
+test('resolve returns annotated hits from a live zone', async () => {
+  const home = await homeWithFakeZone();
+  const result = await cli(['resolve', 'index', 'reload', '--json'], home);
+
+  assert.equal(result.code, 0, result.err);
+  const payload = JSON.parse(result.out) as {
+    result: {
+      hits: { documentId: string; provenance: { zone: string; tier: string } }[];
+      zonesQueried: string[];
+      partial: boolean;
+    };
+  };
+
+  assert.deepEqual(payload.result.zonesQueried, ['user']);
+  assert.equal(payload.result.partial, false);
+  assert.equal(payload.result.hits[0]?.documentId, 'concepts/hot-index-reload.md');
+  assert.equal(payload.result.hits[0]?.provenance.zone, 'user');
+  assert.equal(payload.result.hits[0]?.provenance.tier, 'USER');
+});
+
+test('resolve renders hits for humans', async () => {
+  const home = await homeWithFakeZone();
+  const result = await cli(['resolve', 'index reload'], home);
+
+  assert.equal(result.code, 0, result.err);
+  assert.match(result.out, /1\. concepts\/hot-index-reload\.md/);
+  assert.match(result.out, /USER user d=0/);
+  assert.match(result.out, /zones: user/);
+});
+
+test('a failing zone degrades the result instead of failing the command', async () => {
+  const home = await homeWithFakeZone('crash');
+  const result = await cli(['resolve', 'anything', '--json'], home);
+
+  assert.equal(result.code, 0, 'a dead zone must not fail the query');
+  const payload = JSON.parse(result.out) as {
+    result: { hits: unknown[]; partial: boolean; warnings: { code: string }[] };
+  };
+  assert.deepEqual(payload.result.hits, []);
+  assert.equal(payload.result.partial, true);
+  assert.equal(payload.result.warnings[0]?.code, 'zone_unavailable');
+});
+
+test('resolve reports an empty registry as a warning, not a failure', async () => {
+  const result = await cli(['resolve', 'anything']);
+  assert.equal(result.code, 0);
+  assert.match(result.out, /no hits/);
+  assert.match(result.out, /no zones configured/);
+});
+
 test('a corrupt registry fails closed rather than loading a subset', async () => {
   const home = await mkdtemp(path.join(tmpdir(), 'kns-cli-'));
   await (await import('node:fs/promises')).writeFile(

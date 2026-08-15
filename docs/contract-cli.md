@@ -21,6 +21,25 @@ kns zone remove <name> [--json]
 itself begins with dashes must use the `=` form, because a bare `--arg --root /x`
 parses as a switch followed by another flag.
 
+## Implemented: `kns resolve`
+
+```bash
+kns resolve <query> [--k <n>] [--mode exact|broad] [--scope <namespace>] \
+                    [--no-early-exit] [--json]
+```
+
+Every hit carries provenance: zone, namespace, tier, distance, owner, and age. The
+envelope also reports `zonesQueried`, `earlyExitAt`, `partial`, `resolveMs`, and any
+warnings.
+
+A zone that fails or times out produces a warning and `partial: true` — **exit code
+stays 0**. A degraded answer is still an answer, and the other zones may hold what the
+caller needs. Only a bad request, an invalid registry, or an internal fault is a
+non-zero exit.
+
+Out-of-range values are rejected rather than clamped: `--k 99` fails instead of
+quietly returning 20.
+
 The registry lives at `$KNS_HOME/zones.json`, defaulting to `~/.kns/zones.json`. It is
 only ever read from disk, never fetched, because `transport.command` names a process
 to spawn.
