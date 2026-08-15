@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { defaultConfig } from '../core/config.ts';
+import { HitCache } from '../cache/store.ts';
 import { KnsError } from '../core/errors.ts';
 import type { Registry } from '../core/registry.ts';
 import { SCHEMA_VERSION } from '../version.ts';
@@ -431,4 +432,67 @@ test('resolve caps how many zones it queries at once', async () => {
     context.log.peakConcurrent <= defaultConfig().resolution.maxConcurrentZones,
     `expected at most ${defaultConfig().resolution.maxConcurrentZones} concurrent zones, saw ${context.log.peakConcurrent}`,
   );
+});
+
+test('a shared zone is served from cache when its generation is unchanged', async () => {
+  const shared = zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1, ttlSeconds: 3600 });
+  const context = deps([shared], { team: { hits: [raw('t.md')] } });
+  const store = new HitCache(':memory:');
+  context.deps.cache = store;
+
+  const first = await resolve(request(), context.deps);
+  const second = await resolve(request(), context.deps);
+
+  assert.equal(first.hits[0]?.documentId, 't.md');
+  assert.equal(second.hits[0]?.documentId, 't.md');
+  assert.deepEqual(context.log.searched, ['team'], 'the second resolve was served from cache');
+  assert.equal(store.stats().hits, 1);
+  store.close();
+});
+
+test('a generation change re-queries the zone', async () => {
+  const shared = zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1, ttlSeconds: 3600 });
+  const context = deps([shared], { team: { hits: [raw('t.md')] } });
+  const store = new HitCache(':memory:');
+  context.deps.cache = store;
+
+  let generation = 'gen-1';
+  const inner = context.deps.createClient;
+  context.deps.createClient = (target) => {
+    const client = inner(target);
+    return { ...client, status: async () => ({ documents: null, generation }) };
+  };
+
+  await resolve(request(), context.deps);
+  generation = 'gen-2';
+  await resolve(request(), context.deps);
+
+  assert.deepEqual(context.log.searched, ['team', 'team'], 'a reindex invalidates before the TTL');
+  store.close();
+});
+
+test('the private tier is never cached', async () => {
+  const context = deps([zone({ name: 'user', ttlSeconds: 3600 })], { user: { hits: [raw('a.md')] } });
+  const store = new HitCache(':memory:');
+  context.deps.cache = store;
+
+  await resolve(request(), context.deps);
+  await resolve(request(), context.deps);
+
+  assert.deepEqual(context.log.searched, ['user', 'user'], 'the local zone is already local');
+  assert.equal(store.stats().entries, 0);
+  store.close();
+});
+
+test('a shared zone with no TTL is not cached', async () => {
+  const shared = zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1, ttlSeconds: 0 });
+  const context = deps([shared], { team: { hits: [raw('t.md')] } });
+  const store = new HitCache(':memory:');
+  context.deps.cache = store;
+
+  await resolve(request(), context.deps);
+  await resolve(request(), context.deps);
+
+  assert.deepEqual(context.log.searched, ['team', 'team']);
+  store.close();
 });
