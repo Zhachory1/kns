@@ -226,6 +226,71 @@ test('resolve ranks across bands rather than concatenating them', async () => {
   assert.ok(companyRank < localRank, 'a fresh rank-1 company hit beats a rank-4 local one');
 });
 
+test('a clear, fresh local hit stops the walk before the outer bands', async () => {
+  const zones = [
+    zone({ name: 'user' }),
+    zone({ name: 'team', namespace: 'company/platform', tier: 'TEAM', distance: 1 }),
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2 }),
+  ];
+  const context = deps(zones, {
+    user: { hits: [raw('local.md', { modified: '2026-08-09T12:00:00.000Z' })] },
+    team: { hits: [raw('t.md')] },
+    company: { hits: [raw('c.md')] },
+  });
+
+  const result = await resolve(request(), context.deps);
+
+  assert.deepEqual(result.zonesQueried, ['user']);
+  assert.equal(result.earlyExitAt, 0);
+  assert.match(result.explanation, /1d old and leads by 1\.000/);
+});
+
+test('--no-early-exit forces the full walk', async () => {
+  const zones = [
+    zone({ name: 'user' }),
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2 }),
+  ];
+  const context = deps(zones, {
+    user: { hits: [raw('local.md', { modified: '2026-08-09T12:00:00.000Z' })] },
+    company: { hits: [raw('c.md')] },
+  });
+
+  const result = await resolve(request({ noEarlyExit: true }), context.deps);
+
+  assert.deepEqual(result.zonesQueried, ['user', 'company']);
+  assert.equal(result.earlyExitAt, null);
+});
+
+test('broad mode queries every zone', async () => {
+  const zones = [
+    zone({ name: 'user' }),
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2 }),
+  ];
+  const context = deps(zones, {
+    user: { hits: [raw('local.md', { modified: '2026-08-09T12:00:00.000Z' })] },
+    company: { hits: [raw('c.md')] },
+  });
+
+  const result = await resolve(request({ mode: 'broad' }), context.deps);
+  assert.deepEqual(result.zonesQueried, ['user', 'company']);
+});
+
+test('an undated top hit keeps the walk going', async () => {
+  const zones = [
+    zone({ name: 'user' }),
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2 }),
+  ];
+  const context = deps(zones, {
+    user: { hits: [raw('local.md')] },
+    company: { hits: [raw('c.md')] },
+  });
+
+  const result = await resolve(request(), context.deps);
+
+  assert.deepEqual(result.zonesQueried, ['user', 'company']);
+  assert.match(result.explanation, /no known age|reached every zone/);
+});
+
 test('resolve deduplicates a document returned by two zones', async () => {
   const zones = [
     zone({ name: 'user' }),

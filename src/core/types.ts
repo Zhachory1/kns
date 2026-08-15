@@ -118,6 +118,8 @@ export interface ResolveResult {
   zonesQueried: string[];
   /** Distance at which the walk stopped early, or null when it ran to completion. */
   earlyExitAt: number | null;
+  /** Why the walk stopped where it did, surfaced by `--explain`. */
+  explanation: string;
   /** True when at least one zone failed or timed out. */
   partial: boolean;
   /** Wall-clock duration of the resolution, in milliseconds. */

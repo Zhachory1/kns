@@ -19,6 +19,7 @@ import type { Hit, ResolveRequest, ResolveResult, Warning, Zone } from '../core/
 import { KnsError } from '../core/errors.ts';
 import type { ZoneClient } from '../zone/client.ts';
 import { annotate } from './annotate.ts';
+import { decideEarlyExit } from './early-exit.ts';
 import { rankHits } from './rank.ts';
 
 /** Creates a client for a zone. Injected so tests never spawn a process. */
@@ -129,6 +130,8 @@ export async function resolve(request: ResolveRequest, deps: ResolveDeps): Promi
   const hits: Hit[] = [];
   const warnings: Warning[] = [];
   const zonesQueried: string[] = [];
+  let earlyExitAt: number | null = null;
+  let explanation = 'walk reached every zone';
 
   for (const band of bands) {
     const remaining = deps.config.resolution.resolveDeadlineMs - (Date.now() - started);
@@ -153,10 +156,24 @@ export async function resolve(request: ResolveRequest, deps: ResolveDeps): Promi
       deps.config.resolution.maxConcurrentZones,
     );
 
+    const bandHits: Hit[] = [];
     for (const outcome of outcomes) {
       zonesQueried.push(outcome.zone.name);
       hits.push(...outcome.hits);
+      bandHits.push(...outcome.hits);
       if (outcome.warning !== null) warnings.push(outcome.warning);
+    }
+
+    const decision = decideEarlyExit(
+      rankHits(bandHits, byName, deps.config.ranking),
+      band,
+      request,
+      deps.config.earlyExit,
+    );
+    explanation = decision.reason;
+    if (decision.stop) {
+      earlyExitAt = band[0]?.distance ?? null;
+      break;
     }
   }
 
@@ -172,7 +189,8 @@ export async function resolve(request: ResolveRequest, deps: ResolveDeps): Promi
   return {
     hits: rankHits(hits, byName, deps.config.ranking).slice(0, request.k),
     zonesQueried,
-    earlyExitAt: null,
+    earlyExitAt,
+    explanation,
     partial: warnings.some((warning) => warning.code !== 'invalid_request'),
     resolveMs: Date.now() - started,
     warnings,
