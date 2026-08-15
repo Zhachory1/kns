@@ -52,7 +52,7 @@ jobs:
       - name: Land the next pull request
         env:
           GH_TOKEN: ${{ github.token }}
-          COUNT: ${{ github.event.inputs.count || '1' }}
+          COUNT: ${{ github.event.inputs.count || '3' }}
         run: |
           set -euo pipefail
 
