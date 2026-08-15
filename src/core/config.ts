@@ -95,7 +95,12 @@ export function defaultConfig(): KnsConfig {
   return {
     schemaVersion: SCHEMA_VERSION,
     resolution: { k: 10, zoneDeadlineMs: 1500, resolveDeadlineMs: 4000, maxConcurrentZones: 4 },
-    ranking: { rrfK: 60, nearnessBase: 0.9, unownedPenalty: 0.85, staleFactor: 0.5 },
+    // rrfK is 10, not the textbook 60. RRF's usual constant assumes many rankers over
+    // one corpus; here there are a handful of zones, and at k=60 adjacent ranks differ
+    // by so little that the nearness prior decides every comparison — a rank-9 local note
+    // outscores a rank-1 fresh company document, which makes nearness an override
+    // rather than a prior. PR-11 tunes this against the harness.
+    ranking: { rrfK: 10, nearnessBase: 0.9, unownedPenalty: 0.85, staleFactor: 0.5 },
     earlyExit: { marginMin: 0.15, authoritativeMaxAgeDays: 90, minHits: 1 },
   };
 }

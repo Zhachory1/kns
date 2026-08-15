@@ -44,7 +44,7 @@ for you.
 
 | Key | Default | Notes |
 |-----|---------|-------|
-| `rrfK` | `60` | Reciprocal Rank Fusion constant |
+| `rrfK` | `10` | Reciprocal Rank Fusion constant. Lower than the textbook 60 — see below |
 | `nearnessBase` | `0.9` | Prior is `nearnessBase ^ distance` |
 | `unownedPenalty` | `0.85` | Applied to shared documents with no owner |
 | `staleFactor` | `0.5` | Applied past `review_by` |

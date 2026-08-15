@@ -27,6 +27,26 @@ Nearness is a mild prior, not an override. A fresh, owned, top-ranked company do
 can and should outrank a weak local note — otherwise the hierarchy would just be a
 slower version of local-only search.
 
+### Why `rrfK` is 10, not 60
+
+RRF's textbook constant of 60 assumes many rankers over one corpus, where the point is
+to damp any single ranker's confidence. KNS has a handful of zones and the opposite
+need: rank has to carry real signal.
+
+At `rrfK = 60`, adjacent ranks differ by so little that the priors decide every
+comparison. Concretely, a rank-9 local note scores `1/69 = 0.0145`, while a rank-1
+fresh company document scores `1/61 × 0.9² ≈ 0.0132` — the local note wins purely on
+distance. That makes nearness an override, which is exactly what this design says it
+must not be.
+
+At `rrfK = 10` the same comparison is `1/19 = 0.053` against `1/11 × 0.81 ≈ 0.073`, and
+the better-ranked document wins. Rank leads; the priors adjust. This was caught by the
+"nearness is a prior, not an override" property test rather than by inspection, which
+is the argument for having it.
+
+PR-11 tunes the value against the harness. Until then it is a defensible default
+rather than a measured one.
+
 Ties break on `(score desc, distance asc, documentId asc)`, so the same inputs always
 produce the same output. Determinism is property-tested, not assumed.
 
