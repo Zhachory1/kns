@@ -5,6 +5,7 @@ import { defaultConfig } from '../core/config.ts';
 import type { Hit, Tier, Zone } from '../core/types.ts';
 import {
   authority,
+  coverage,
   compareHits,
   dedupe,
   freshness,
@@ -260,4 +261,49 @@ test('rankHits falls back to a default half-life for an unknown zone', () => {
 
 test('rankHits handles an empty input', () => {
   assert.deepEqual(rankHits([], new Map(), RANKING), []);
+});
+
+test('coverage measures how much of the query the snippet contains', () => {
+  assert.equal(coverage('index reload', 'index reload procedure'), 1);
+  assert.equal(coverage('index reload', 'index only'), 0.5);
+  assert.equal(coverage('index reload', 'nothing relevant'), 0);
+  assert.equal(coverage('', 'anything'), 1, 'a query with no terms cannot discriminate');
+  assert.equal(coverage('Index RELOAD', 'index reload'), 1, 'matching is case-insensitive');
+});
+
+test('coverage restores the magnitude that rank fusion discards', () => {
+  const zone = { halfLifeDays: 180 } as Zone;
+  const query = 'data retention policy deletion schedule';
+
+  // Both are rank 1 in their own zone, which is all RRF can see. Zones hold disjoint
+  // corpora, so without coverage a zone with one weak match ties with the zone that
+  // actually holds the answer.
+  const weakLocal = scoreHit(
+    hit('scratch.md', { rank: 1, tier: 'USER', distance: 0, snippet: 'retention something later' }),
+    zone,
+    RANKING,
+    query,
+  );
+  const strongCompany = scoreHit(
+    hit('policy.md', {
+      rank: 1,
+      tier: 'COMPANY',
+      distance: 2,
+      owner: 'eng',
+      ageDays: 9,
+      snippet: 'data retention policy ninety days deletion schedule',
+    }),
+    zone,
+    RANKING,
+    query,
+  );
+
+  assert.ok(strongCompany > weakLocal);
+});
+
+test('the coverage floor keeps a terse snippet from being zeroed out', () => {
+  const zone = { halfLifeDays: 180 } as Zone;
+  const score = scoreHit(hit('a.md', { snippet: 'a title with nothing in common' }), zone, RANKING, 'zzz qqq');
+
+  assert.ok(score > 0);
 });
