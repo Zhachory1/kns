@@ -26,6 +26,7 @@ function hit(documentId: string): Hit {
     },
     alsoIn: [],
     conflict: false,
+    conflictWith: [],
   };
 }
 

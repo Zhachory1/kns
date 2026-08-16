@@ -25,6 +25,7 @@ function hit(documentId: string, score: number, ageDays: number | null = 1): Hit
     },
     alsoIn: [],
     conflict: false,
+    conflictWith: [],
   };
 }
 
