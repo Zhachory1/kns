@@ -373,3 +373,92 @@ test('an unknown promote subcommand is rejected', async () => {
   assert.equal(result.code, 1);
   assert.match(result.err, /unknown subcommand "promote yeet"/);
 });
+
+/** A home with a private corpus and a shared target zone. */
+async function homeWithZones(): Promise<{ home: string; corpus: string; target: string }> {
+  const home = await mkdtemp(path.join(tmpdir(), 'kns-cli-'));
+  const corpus = await mkdtemp(path.join(tmpdir(), 'kns-corpus-'));
+  const target = await mkdtemp(path.join(tmpdir(), 'kns-zone-'));
+
+  await cli(
+    ['zone', 'add', '--name', 'user', '--namespace', 'user', '--tier', 'USER', '--distance', '0', '--root', corpus],
+    home,
+  );
+  await cli(
+    [
+      'zone', 'add', '--name', 'team', '--namespace', 'company/platform', '--tier', 'TEAM',
+      '--distance', '1', '--root', target,
+    ],
+    home,
+  );
+  return { home, corpus, target };
+}
+
+test('promote draft writes a provenance-carrying copy into the target zone', async () => {
+  const { home, corpus, target } = await homeWithZones();
+  const fs = await import('node:fs/promises');
+  const body = 'A durable explanation of the reload procedure. '.repeat(6);
+  await fs.writeFile(path.join(corpus, 'note.md'), `---\nkind: concept\nowner: me@example.com\n---\n\n${body}\n`, 'utf8');
+
+  const result = await cli(['promote', 'draft', 'note.md', '--to', 'team', '--as', 'me'], home);
+  assert.equal(result.code, 0, result.err);
+
+  const written = await fs.readFile(path.join(target, 'note.md'), 'utf8');
+  assert.match(written, /promoted_from: note\.md/);
+  assert.match(written, /origin_owner: me@example\.com/);
+  assert.match(written, /review_by: /);
+});
+
+test('promote draft refuses a document with a secret and writes nothing', async () => {
+  const { home, corpus, target } = await homeWithZones();
+  const fs = await import('node:fs/promises');
+  const body = 'Notes about the deploy. '.repeat(12);
+  await fs.writeFile(path.join(corpus, 'leaky.md'), `${body}\npassword = hunter2hunter2hunter2\n`, 'utf8');
+
+  const result = await cli(['promote', 'draft', 'leaky.md', '--to', 'team'], home);
+
+  assert.equal(result.code, 2, 'a refusal is exit code 2, not a generic failure');
+  assert.match(result.err, /promotion refused/);
+  assert.deepEqual(await fs.readdir(target), []);
+});
+
+test('promote draft --dry-run writes nothing but shows the result', async () => {
+  const { home, corpus, target } = await homeWithZones();
+  const fs = await import('node:fs/promises');
+  const body = 'A durable explanation of the reload procedure. '.repeat(6);
+  await fs.writeFile(path.join(corpus, 'note.md'), body, 'utf8');
+
+  const result = await cli(['promote', 'draft', 'note.md', '--to', 'team', '--dry-run', '--json'], home);
+  assert.equal(result.code, 0, result.err);
+
+  const payload = JSON.parse(result.out) as { result: { written: boolean; contents: string } };
+  assert.equal(payload.result.written, false);
+  assert.match(payload.result.contents, /promoted_from: note\.md/);
+  assert.deepEqual(await fs.readdir(target), []);
+});
+
+test('promote draft rejects the private tier as a target', async () => {
+  const { home, corpus } = await homeWithZones();
+  const fs = await import('node:fs/promises');
+  await fs.writeFile(path.join(corpus, 'note.md'), 'body '.repeat(60), 'utf8');
+
+  const result = await cli(['promote', 'draft', 'note.md', '--to', 'user'], home);
+  assert.equal(result.code, 1);
+  assert.match(result.err, /is the private tier/);
+});
+
+test('promote draft requires a document and a target', async () => {
+  const { home } = await homeWithZones();
+
+  assert.match((await cli(['promote', 'draft'], home)).err, /document id is required/);
+  assert.match((await cli(['promote', 'draft', 'note.md'], home)).err, /--to <zone> is required/);
+  assert.match((await cli(['promote', 'draft', 'note.md', '--to', 'ghost'], home)).err, /no zone named/);
+});
+
+test('promote draft refuses a document id that escapes the corpus', async () => {
+  const { home } = await homeWithZones();
+  const result = await cli(['promote', 'draft', '../../etc/passwd', '--to', 'team'], home);
+
+  assert.equal(result.code, 1);
+  assert.match(result.err, /escapes the zone root/);
+});

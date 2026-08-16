@@ -33,6 +33,7 @@ usage:
   kns cache stats [--json]
   kns cache purge [--zone <name>] [--json]
   kns promote suggest [--to <zone>] [--json]
+  kns promote draft <id> --to <zone> [--dry-run] [--review-days <n>] [--json]
   kns --version
 
 docs: DESIGN.md, docs/contract-cli.md`;
