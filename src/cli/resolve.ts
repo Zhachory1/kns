@@ -10,6 +10,8 @@ import { loadRegistry } from '../core/registry.ts';
 import type { Hit, ResolveResult } from '../core/types.ts';
 import { issuesToError, parseResolveRequest } from '../core/validate.ts';
 import { HitCache, cachePath } from '../cache/store.ts';
+import { DemandStore } from '../signal/demand.ts';
+import { loadSignalSettings } from '../signal/settings.ts';
 import { StdioZoneClient } from '../zone/client.ts';
 import { resolve } from '../resolve/resolver.ts';
 import type { ResolveDeps } from '../resolve/resolver.ts';
@@ -110,6 +112,18 @@ export async function runResolve(args: ParsedArgs, context: CliContext): Promise
     result = await resolve(parsed.value, deps);
   } finally {
     cache.close();
+  }
+
+  // Counting is opt-in and local. Nothing here records the query, only that a
+  // document was returned.
+  const signal = await loadSignalSettings(context.home);
+  if (signal.enabled) {
+    const demand = new DemandStore(cachePath(context.home));
+    try {
+      for (const hit of result.hits) demand.record(hit.provenance.zone, hit.documentId);
+    } finally {
+      demand.close();
+    }
   }
 
   context.write(
