@@ -544,3 +544,38 @@ test('an unknown signal subcommand is rejected', async () => {
   assert.equal(result.code, 1);
   assert.match(result.err, /unknown subcommand "signal broadcast"/);
 });
+
+test('review lists what needs attention and changes nothing', async () => {
+  const { home, target } = await homeWithZones();
+  const fs = await import('node:fs/promises');
+  const body = 'A durable explanation of the reload procedure. '.repeat(6);
+
+  await fs.writeFile(path.join(target, 'stale.md'), `---\nreview_by: 2020-01-01\norigin_owner: team\n---\n\n${body}\n`, 'utf8');
+  await fs.writeFile(path.join(target, 'fine.md'), `---\nreview_by: 2099-01-01\norigin_owner: team\n---\n\n${body}\n`, 'utf8');
+
+  const before = await fs.readFile(path.join(target, 'stale.md'), 'utf8');
+  const result = await cli(['review', '--zone', 'team', '--json'], home);
+  assert.equal(result.code, 0, result.err);
+
+  const payload = JSON.parse(result.out) as { result: { items: { documentId: string }[] } };
+  assert.deepEqual(payload.result.items.map((item) => item.documentId), ['stale.md']);
+  assert.equal(await fs.readFile(path.join(target, 'stale.md'), 'utf8'), before, 'listing must not write');
+});
+
+test('review requires a zone, and changes require confirmation', async () => {
+  const { home } = await homeWithZones();
+
+  assert.match((await cli(['review'], home)).err, /--zone <name> is required/);
+  assert.match(
+    (await cli(['review', '--zone', 'team', '--demote', 'a.md'], home)).err,
+    /--confirm is required to change a shared zone/,
+  );
+});
+
+test('review reports a clean zone', async () => {
+  const { home } = await homeWithZones();
+  const result = await cli(['review', '--zone', 'team'], home);
+
+  assert.equal(result.code, 0);
+  assert.match(result.out, /nothing needs review/);
+});
