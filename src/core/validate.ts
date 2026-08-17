@@ -199,6 +199,7 @@ const ZONE_KEYS = [
   'owner',
   'sourceRepo',
   'neverEarlyExit',
+  'delegatesTo',
 ] as const;
 
 /** Fields a resolve request may declare. */
@@ -262,6 +263,7 @@ export function parseZone(input: unknown, path = 'zone'): ValidationResult<Zone>
   const owner = readNullableString(context, source, path, 'owner');
   const sourceRepo = readNullableString(context, source, path, 'sourceRepo');
   const neverEarlyExit = readBoolean(context, source, path, 'neverEarlyExit', false);
+  const delegatesTo = readStringArray(context, source, path, 'delegatesTo');
 
   const transport = parseTransport(source['transport'], `${path}.transport`);
   if (!transport.ok) context.issues.push(...transport.issues);
@@ -283,6 +285,7 @@ export function parseZone(input: unknown, path = 'zone'): ValidationResult<Zone>
       owner,
       sourceRepo,
       neverEarlyExit,
+      delegatesTo,
     },
   };
 }

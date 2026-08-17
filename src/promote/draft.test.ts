@@ -25,6 +25,7 @@ function zone(): Zone {
     owner: 'platform-team',
     sourceRepo: null,
     neverEarlyExit: false,
+    delegatesTo: [],
   };
 }
 

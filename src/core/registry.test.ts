@@ -8,7 +8,10 @@ import { SCHEMA_VERSION } from '../version.ts';
 import { KnsError } from './errors.ts';
 import type { Zone } from './types.ts';
 import {
+  MAX_DELEGATION_DEPTH,
   REGISTRY_FILE,
+  expandDelegated,
+  validateDelegation,
   addZone,
   emptyRegistry,
   findZone,
@@ -36,6 +39,7 @@ function zone(overrides: Partial<Zone> = {}): Zone {
     owner: null,
     sourceRepo: null,
     neverEarlyExit: false,
+    delegatesTo: [],
     ...overrides,
   };
 }
@@ -237,4 +241,98 @@ test('loadRegistry reads a registry written outside the API', async () => {
   const registry = await loadRegistry(home);
   assert.equal(registry.zones[0]?.ttlSeconds, 3600);
   assert.equal(registry.zones[0]?.owner, 'me');
+});
+
+test('a sound delegation graph validates', () => {
+  const zones = [
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2, delegatesTo: ['platform'] }),
+    zone({ name: 'platform', namespace: 'company/platform', tier: 'TEAM', distance: 1, delegatesTo: ['search'] }),
+    zone({ name: 'search', namespace: 'company/platform/search', tier: 'TEAM', distance: 1 }),
+  ];
+
+  assert.deepEqual(validateDelegation(zones), []);
+});
+
+test('delegation to an unknown zone is rejected', () => {
+  const issues = validateDelegation([zone({ name: 'company', namespace: 'company', delegatesTo: ['ghost'] })]);
+  assert.match(issues[0]?.message ?? '', /unknown zone "ghost"/);
+});
+
+test('a zone cannot delegate to itself', () => {
+  const issues = validateDelegation([zone({ name: 'a', namespace: 'company', delegatesTo: ['a'] })]);
+  assert.match(issues[0]?.message ?? '', /cannot delegate to itself/);
+});
+
+test('a delegation cycle is rejected rather than looping forever', () => {
+  const zones = [
+    zone({ name: 'a', namespace: 'company', delegatesTo: ['b'] }),
+    zone({ name: 'b', namespace: 'company/b', delegatesTo: ['c'] }),
+    zone({ name: 'c', namespace: 'company/b/c', delegatesTo: ['a'] }),
+  ];
+
+  const issues = validateDelegation(zones);
+  assert.ok(issues.some((issue) => /delegation cycle/.test(issue.message)));
+});
+
+test('a delegated zone must sit beneath its parent namespace', () => {
+  const zones = [
+    zone({ name: 'company', namespace: 'company', delegatesTo: ['other'] }),
+    zone({ name: 'other', namespace: 'elsewhere/team' }),
+  ];
+
+  const issues = validateDelegation(zones);
+  assert.match(issues[0]?.message ?? '', /is not beneath company/);
+});
+
+test('delegation deeper than the cap is rejected', () => {
+  const zones = Array.from({ length: MAX_DELEGATION_DEPTH + 3 }, (_unused, index) =>
+    zone({
+      name: `z${index}`,
+      namespace: `company${'/x'.repeat(index)}`,
+      delegatesTo: index < MAX_DELEGATION_DEPTH + 2 ? [`z${index + 1}`] : [],
+    }),
+  );
+
+  assert.ok(validateDelegation(zones).some((issue) => /deeper than/.test(issue.message)));
+});
+
+test('a parse rejects a registry whose delegation graph is unsound', () => {
+  const result = parseRegistry(
+    document([zoneDocument({ name: 'a', namespace: 'company', delegatesTo: ['ghost'] })]),
+  );
+
+  assert.equal(result.ok, false);
+});
+
+test('selecting a parent namespace also selects its shards', () => {
+  const registry = registryOf([
+    zone({ name: 'company', namespace: 'company', tier: 'COMPANY', distance: 2, delegatesTo: ['platform'] }),
+    zone({ name: 'platform', namespace: 'company/platform', tier: 'TEAM', distance: 1, delegatesTo: ['search'] }),
+    zone({ name: 'search', namespace: 'company/platform/search', tier: 'TEAM', distance: 1 }),
+    zone({ name: 'user', namespace: 'user', tier: 'USER', distance: 0 }),
+  ]);
+
+  assert.deepEqual(
+    selectZones(registry, 'company').map((entry) => entry.name),
+    ['platform', 'search', 'company'],
+  );
+  assert.deepEqual(
+    selectZones(registry, 'user').map((entry) => entry.name),
+    ['user'],
+  );
+});
+
+test('expandDelegated terminates on a cyclic graph', () => {
+  const registry = registryOf([
+    zone({ name: 'a', namespace: 'company', delegatesTo: ['b'] }),
+    zone({ name: 'b', namespace: 'company/b', delegatesTo: ['a'] }),
+  ]);
+
+  const expanded = expandDelegated(registry, [registry.zones[0]!]);
+  assert.deepEqual(expanded.map((entry) => entry.name).sort(), ['a', 'b']);
+});
+
+test('expandDelegated ignores a dangling delegation target', () => {
+  const registry = registryOf([zone({ name: 'a', namespace: 'company', delegatesTo: ['ghost'] })]);
+  assert.deepEqual(expandDelegated(registry, registry.zones).map((entry) => entry.name), ['a']);
 });
