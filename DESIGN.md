@@ -462,14 +462,20 @@ Rejected:
 
 ## 11. Open questions
 
-| # | Question | Current lean |
-|---|----------|--------------|
-| Q1 | Early-exit threshold values | tune in PR-11 harness; start conservative (rarely exit) |
-| Q2 | Zone discovery bootstrap | `zones.json` explicit, hand-added. Auto-discovery later, need auth story. |
-| Q3 | Demand signal privacy | k-anonymity + bucketing (§6.4), ship off by default |
-| Q4 | Conflict when zones disagree | freshness × authority in rank (§5.4) + surface `conflict: true` on result |
-| Q5 | Cost at N users × M zones | early-exit + TTL cache + git sync (no per-query network). Measure `fanoutRate`. |
-| Q6 | Corpus scale ceiling | ZBrain caps 20k docs / 100MB. Company zone may exceed → shard via sub-zone delegation |
+| # | Question | Answer as shipped |
+|---|----------|-------------------|
+| Q1 | Early-exit threshold values | **Answered.** Conservative defaults, measured by harness. `fanoutRate` 80% — walk stop only on clear fresh local answer. |
+| Q2 | Zone discovery bootstrap | **Answered.** `zones.json`, local only, never fetched. Auto-discovery still out of scope — need auth story first. |
+| Q3 | Demand signal privacy | **Answered.** Ship off. No query column exist in schema. Rotating pseudonymous reporter, bucketed counts, k-anonymity at aggregator. |
+| Q4 | Conflict when zones disagree | **Answered (PR-16).** Rank prefer fresh + owned; content-similarity detection flag cross-zone disagreement with `conflictWith`. |
+| Q5 | Cost at N users × M zones | **Answered.** No per-query network at all — git sync only. Early exit + TTL cache + concurrency cap. `fanoutRate` measured. |
+| Q6 | Corpus scale ceiling | **Answered (PR-19).** Delegation shard a zone into sub-zones; parent scope select children. |
+
+New question opened by the build:
+
+| # | Question | Lean |
+|---|----------|------|
+| Q7 | Coverage factor is lexical, so under-credit paraphrase | Harness is the place to prove any replacement. See ADR 0002. |
 
 ---
 
