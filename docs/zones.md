@@ -42,6 +42,22 @@ registry fails closed: no zone loads, and the error names the offending entry. A
 half-loaded registry would silently change which zone is authoritative, which is worse
 than not answering.
 
+## What a zone engine must provide
+
+KNS spawns `transport.command` and speaks MCP over stdio to it. An engine qualifies if
+it answers `initialize` and then `tools/call` for a search tool, returning results in a
+content block. Both message framings are accepted — `Content-Length` headers and
+newline-delimited JSON — because both exist in the wild.
+
+Field naming is treated leniently: a hit may spell its identifier `documentId`, `id`,
+or `path`, and its excerpt `snippet`, `excerpt`, `text`, or `body`. Anything missing
+becomes null rather than an error. A zone is a trust boundary, so one engine's odd
+payload must not fail a query the other zones can answer.
+
+Each zone gets one child process, spawned on first use and reused. A call that exceeds
+its deadline reclaims the process — SIGTERM escalating to SIGKILL — so the next query
+starts from a known state instead of queueing behind a hung call.
+
 ## Delegation
 
 Namespaces form a tree, exactly like DNS zones:
@@ -56,4 +72,17 @@ company
 zone that outgrows the per-zone corpus limits gets sharded: split it into sub-zones,
 each with its own index and its own owner.
 
-Cycles are rejected at load time and delegation depth is capped.
+```bash
+kns zone add --name company --namespace company --tier COMPANY --distance 2 \
+             --root ~/zones/company --delegates-to platform
+```
+
+Selecting a parent namespace also selects everything beneath it. Otherwise sharding a
+zone would silently shrink what a scoped query can find — the exact failure sharding
+was meant to avoid.
+
+Cycles, self-delegation, unknown targets, and chains deeper than the cap are all
+rejected at load time. A cycle would make resolution non-terminating and an unknown
+target would silently drop a shard; both are far easier to diagnose as a registry
+error than as a missing answer weeks later. A delegated zone must also sit beneath its
+parent's namespace, so the tree stays a tree.

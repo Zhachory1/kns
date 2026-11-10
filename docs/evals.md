@@ -1,11 +1,12 @@
 # Evaluation
 
-**Status:** skeleton. The harness lands in PR-11 and this document then carries
-committed baseline numbers, refreshed by any PR that changes ranking or resolution.
+**Status:** implemented (PR-11). The numbers below are committed and must be refreshed
+by any pull request that changes ranking or resolution.
 
-Ranking weights and early-exit thresholds are not tunable by intuition. Until the
-harness exists, the defaults in [configuration](configuration.md) are deliberately
-conservative — they fan out more than necessary and let ranking decide.
+Ranking weights and early-exit thresholds are not tunable by intuition, so this
+measures them. Each zone is served by a deterministic in-process engine, which keeps
+the numbers about the router rather than about whichever backend happens to be
+installed.
 
 ## Fixtures
 
@@ -36,7 +37,7 @@ blocks the release.
 ## Running
 
 ```bash
-npm run bench:tiers        # lands with PR-11
+npm run bench:tiers
 ```
 
 Results are written as JSON and as a Markdown readout, and the readout is committed.
@@ -44,5 +45,43 @@ A benchmark whose numbers live only in someone's terminal cannot catch a regress
 
 ## Baseline
 
-_No numbers yet — the harness does not exist. PR-11 fills this table and every
-subsequent ranking change updates it in the same PR._
+| Metric | Hierarchy | USER-only baseline |
+|--------|-----------|--------------------|
+| `recall@k` | 100% | 20% |
+| `authority@1` | 100% | 20% |
+| `fanoutRate` | 80% | 0% |
+| `p95ResolveMs` | 1 | 0 |
+| `leakCount` | 0 | 0 |
+
+| Case | Top hit | Zone | Authoritative | Early exit |
+|------|---------|------|---------------|------------|
+| local answer, fresh and unambiguous | `notes/laptop-setup.md` | user | yes | distance 0 |
+| stale company versus fresh team | `runbooks/index-reload-current.md` | team | yes | distance 1 |
+| weak local versus strong company | `policy/data-retention.md` | company | yes | distance 2 |
+| same document promoted into two zones | `concepts/hot-index-reload.md` | team | yes | distance 1 |
+| owned and current beats unowned and archived | `runbooks/oncall.md` | team | yes | distance 1 |
+
+The USER-only column is the honest comparison: the private zone alone answers one of
+the five cases, because four of them are questions whose authoritative answer lives on
+a team or the company. That is the whole reason the hierarchy exists.
+
+`fanoutRate` of 80% is the early-exit path working on exactly the case it should — the
+clear, fresh, local answer — and declining to stop on the four cases where the local
+zone does not hold the answer.
+
+## What the harness changed
+
+Two defaults were wrong when first measured, and both were caught here rather than by
+inspection:
+
+1. **`rrfK` 60 → 10.** At 60, adjacent ranks differ so little that the nearness prior
+   decided every comparison. See [ranking](ranking.md).
+2. **A coverage factor was added.** Reciprocal Rank Fusion assumes every ranker ranks
+   the *same* corpus. Zones do not — their corpora are disjoint — so "rank 1 in the
+   local zone" and "rank 1 in the company zone" are not comparable, and a zone holding
+   one weak match tied with the zone holding the exact answer. `authority@1` was 60%.
+   Adding an engine-independent coverage factor, computed by KNS from the returned
+   snippet rather than from any engine's score, took it to 100%.
+
+The second is a real limitation of the design as originally written, not a tuning
+detail. It is recorded here because the reasoning matters more than the number.

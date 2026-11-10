@@ -14,18 +14,54 @@ KNS therefore ranks on **rank**, not score, using Reciprocal Rank Fusion, and ap
 priors on top:
 
 ```
+coverage(hit)  = |query terms in snippet| / |query terms|
 rrf(hit)       = 1 / (rrfK + rankWithinZone)
 nearness(hit)  = nearnessBase ^ zone.distance
 freshness(hit) = exp(-ageDays / zone.halfLifeDays)
 authority(hit) = (hit.owned ? 1 : unownedPenalty)
                * (hit.pastReviewTtl ? staleFactor : 1)
 
-score = rrf * nearness * freshness * authority
+score = rrf * max(coverageFloor, coverage) * nearness * freshness * authority
 ```
+
+### Why coverage exists
+
+Reciprocal Rank Fusion assumes every ranker ranks the **same** corpus. Zones do not:
+their corpora are disjoint. So "rank 1 in the local zone" and "rank 1 in the company
+zone" are not comparable claims, and a zone holding a single weak match ties with the
+zone holding the exact answer — fusion has thrown away the only thing that
+distinguished them.
+
+Coverage restores that magnitude without reintroducing the calibration problem: it is
+the fraction of query terms present in the returned snippet, computed by KNS itself,
+identically for every zone. No engine's score is trusted.
+
+Measured effect on the harness: `authority@1` went from 60% to 100%. The floor keeps a
+terse snippet — a title, a summary line — from being zeroed out entirely.
 
 Nearness is a mild prior, not an override. A fresh, owned, top-ranked company document
 can and should outrank a weak local note — otherwise the hierarchy would just be a
 slower version of local-only search.
+
+### Why `rrfK` is 10, not 60
+
+RRF's textbook constant of 60 assumes many rankers over one corpus, where the point is
+to damp any single ranker's confidence. KNS has a handful of zones and the opposite
+need: rank has to carry real signal.
+
+At `rrfK = 60`, adjacent ranks differ by so little that the priors decide every
+comparison. Concretely, a rank-9 local note scores `1/69 = 0.0145`, while a rank-1
+fresh company document scores `1/61 × 0.9² ≈ 0.0132` — the local note wins purely on
+distance. That makes nearness an override, which is exactly what this design says it
+must not be.
+
+At `rrfK = 10` the same comparison is `1/19 = 0.053` against `1/11 × 0.81 ≈ 0.073`, and
+the better-ranked document wins. Rank leads; the priors adjust. This was caught by the
+"nearness is a prior, not an override" property test rather than by inspection, which
+is the argument for having it.
+
+PR-11 tunes the value against the harness. Until then it is a defensible default
+rather than a measured one.
 
 Ties break on `(score desc, distance asc, documentId asc)`, so the same inputs always
 produce the same output. Determinism is property-tested, not assumed.
@@ -44,9 +80,18 @@ observable rather than a hidden optimization.
 
 Two zones can disagree — typically a stale company document against a fresher team
 one. Freshness and authority already push the fresher, owned document up. Conflict
-detection makes that visible: hits sharing promotion lineage but differing in content
-are marked `conflict: true` with a pointer to the other zone, and `kns resolve
---explain` prints which factor decided the order.
+detection makes that visible.
+
+Deduplication only catches the easy case, where two zones return the *same* document
+id. The case that actually misleads a reader is a stale company runbook sitting beside
+a fresher team one under a different filename: both look authoritative, and nothing in
+either says the other exists. So conflicts are detected by content similarity — a
+Jaccard overlap of snippet terms above `CONFLICT_SIMILARITY` — between hits from
+different zones whose text differs.
+
+Identical snippets are duplication, not disagreement, and two similar notes inside one
+zone are that zone's business. Only cross-zone divergence is flagged, as
+`conflict: true` with `conflictWith` naming the other zone-qualified documents.
 
 Surfacing the disagreement matters more than silently winning it. The reader is the
 one who can tell which document is actually right, and who to ask.

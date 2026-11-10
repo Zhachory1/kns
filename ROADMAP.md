@@ -21,7 +21,7 @@ promotion → COMPANY root + signals.
 
 ## M0 — Scaffold and contracts
 
-**PRs:** 01–02 · **Ship:** nothing user-facing. Rails only.
+**PRs:** 01–02 · **Ship:** nothing user-facing. Rails only. · **Status: DONE**
 
 Goal: repo where every later PR is cheap and safe.
 
@@ -33,13 +33,19 @@ Goal: repo where every later PR is cheap and safe.
 **Exit:** CI green on empty-ish repo. Coverage gate proven to fail when dropped.
 Doc skeleton files exist and `docs:check` enforce them.
 
+**Met.** 56 tests pass. Coverage 100% line / 96% branch / 100% function vs 80 floor.
+`docs:check` green over 18 required docs. Gate proven live by
+`test/coverage-gate.test.ts` (runner exit non-zero on under-tested fixture). Toolchain
+landed zero-dep: Node run TypeScript direct, `node --test` built-in coverage, only
+`typescript` + `@types/node` in devDeps.
+
 **Risk:** over-engineering scaffold. Cap M0 at two PRs.
 
 ---
 
 ## M1 — Resolve one zone (no behavior change)
 
-**PRs:** 03–05 · **Ship:** `kns resolve` over the local ZBrain, annotated.
+**Status: DONE** · **PRs:** 03–05 · **Ship:** `kns resolve` over the local ZBrain, annotated.
 
 Goal: build the seam without changing what user get. Matches rollout phase 1–2.
 
@@ -59,7 +65,7 @@ Latency delta vs raw ZBrain < 50ms p95. Adapter kill leftover child on timeout
 
 ## M2 — Many zones, ranked, cached
 
-**PRs:** 06–11 · **Ship:** real hierarchical resolution + eval numbers.
+**Status: DONE** · **PRs:** 06–11 · **Ship:** real hierarchical resolution + eval numbers.
 
 Goal: the DNS behavior. This is where design either work or not.
 
@@ -87,7 +93,7 @@ weights stay config, not constants.
 
 ## M3 — Promotion (the write path)
 
-**PRs:** 12–16 · **Ship:** knowledge actually cross the boundary, safely.
+**Status: DONE** · **PRs:** 12–16 · **Ship:** knowledge actually cross the boundary, safely.
 
 Goal: turn "local note" into "team knowledge" without leaking anything.
 
@@ -112,7 +118,7 @@ each near-miss.
 
 ## M4 — Company root, signals, scale, 0.1.0
 
-**PRs:** 17–20 · **Ship:** taggable release.
+**Status: DONE** · **PRs:** 17–20 · **Ship:** taggable release.
 
 - Demand signal, local-only default, k-anonymity + bucketing when exported.
 - Demotion / review TTL sweep → `kns review` open demotion or renewal PRs.

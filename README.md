@@ -13,9 +13,10 @@ copying everything everywhere.
 
 ## Status
 
-**Implementation in progress.** Milestone M0 (scaffold, CI, coverage floor, docs gate,
-core domain types) has landed on `main`. The remaining milestones (M1–M4) land
-one pull request at a time via the release train; see `ROADMAP.md` for status.
+**0.1.0 — the whole plan is implemented.** Zone registry, MCP zone client, the
+resolution walk with ranking, early exit, and the TTL cache, the `kns-mcp` server, the
+evaluation harness, the promotion workflow end to end, demand signals, the review
+sweep, and zone delegation.
 
 Start here:
 
@@ -68,9 +69,7 @@ a git repository of Markdown; access control is repository access.
 
 The only genuinely new components are the resolver/router and the promotion workflow.
 
-## Planned surface
-
-Once M1–M4 land:
+## Command surface
 
 ```bash
 kns zone add --name team-platform --namespace company/platform --tier TEAM \
